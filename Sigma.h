@@ -294,9 +294,9 @@ Sigma::Sigma(TTree *tree) : fChain(0)
       // The following code should be used if you want this class to access a chain
       // of trees.
       TChain * chain = new TChain("OutputTree","");
-     chain->Add("/data/nowak/Sigma/analysisOutputRHC_cttest_Hyperon_ana_hyperon_sigmazero_mSlice_prodgenie_run3b.root/OutputTree");
-     chain->Add("/data/nowak/Sigma/analysisOutputRHC_cttest_Background_prodgenie_numi_overlay_rhc_run3b_reco2.root/OutputTree");
-      chain->Add("/data/nowak/Sigma/analysisOutputRHC_cttest_Dirt_prodgenie_numi_uboone_overlay_dirt_rhc_mcc9_run3b.root/OutputTree");
+      chain->Add("/Users/nowak/data/Sigma/analysisOutputRHC_cttest_Hyperon_ana_hyperon_sigmazero_mSlice_prodgenie_run3b.root/OutputTree");
+      chain->Add("/Users/nowak/data/Sigma/analysisOutputRHC_cttest_Background_prodgenie_numi_overlay_rhc_run3b_reco2.root/OutputTree");
+      chain->Add("/Users/nowak/data/Sigma/analysisOutputRHC_cttest_Dirt_prodgenie_numi_uboone_overlay_dirt_rhc_mcc9_run3b.root/OutputTree");
 
       tree = chain;
 #endif // SINGLE_TREE
