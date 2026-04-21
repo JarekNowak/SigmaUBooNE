@@ -188,7 +188,7 @@ void CrossSection()
   // --------------------------------------------------------------
   PrintStep(2, "Setting experimental inputs ...");
   const double PoT         = 4.90e20;   // Protons-on-Target (NuMI run 3b)
-  const int    N_obs       = 1;         // Observed candidate events (data)
+  const int    N_obs       = 0.0;         // Observed candidate events (data)
   const double N_bkg       = 0.0;       // Predicted background after all cuts
   const double N_pred_init = 17.86;      // MC predicted signal in FV before selection  ← REPLACE with actual MC
   const double N_pred_sel  = 0.3;       // MC predicted signal after all cuts           ← REPLACE with actual MC
@@ -255,7 +255,7 @@ void CrossSection()
   //    If you know sigma_MC_ref, you can derive flux_per_POT here.
   // --------------------------------------------------------------
   PrintStep(5, "Computing integrated flux and exposure ...");
-  const double flux_per_POT = 3.0e-8;              // [numubar / cm^2 / POT]  <-- REPLACE
+    const double flux_per_POT = 3.52298e-10;// 3.0e-8;              // [numubar / cm^2 / POT]  <-- REPLACE
   const double Phi          = flux_per_POT * PoT;  // integrated flux [numubar / cm^2]
 
   // Effective exposure:  ε × Φ × N_T  [dimensionless / cm^2 × cm^2 = events/cm^2]
