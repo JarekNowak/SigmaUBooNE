@@ -91,9 +91,6 @@ void RunTMVA()
   loader->AddVariable("MuonTrkLength",     "Muon Track Length", "F");
   loader->AddVariable("MuonTrkDistVtx",    "Muon Dist Vtx",     "F");
   loader->AddVariable("MuonTrkScore",      "Muon Trk Score",    "F");
- // loader->AddVariable("MuonDeDxPlane0",    "Muon dEdx Pl0",     "F");
- // loader->AddVariable("MuonDeDxPlane1",    "Muon dEdx Pl1",     "F");
- // loader->AddVariable("MuonDeDxPlane2",    "Muon dEdx Pl2",     "F");
   loader->AddVariable("MuonNHitsY",        "Muon NHits Y",      "F");
   loader->AddVariable("MuonPhotonPID",     "Muon Photon BDT",   "F");
 
@@ -102,10 +99,6 @@ void RunTMVA()
   loader->AddVariable("PionTrkLength",     "Pion Track Length", "F");
   loader->AddVariable("PionTrkDistVtx",    "Pion Dist Vtx",     "F");
   loader->AddVariable("PionTrkScore",      "Pion Trk Score",    "F");
-  //loader->AddVariable("PionDeDxPlane0",    "Pion dEdx Pl0",     "F");
-  //loader->AddVariable("PionDeDxPlane1",    "Pion dEdx Pl1",     "F");
-  //loader->AddVariable("PionDeDxPlane2",    "Pion dEdx Pl2",     "F");
-  //loader->AddVariable("PionNHitsY",        "Pion NHits Y",      "F");
   loader->AddVariable("PionPhotonPID",     "Pion Photon BDT",   "F");
 
   // --- Proton candidate ---
@@ -113,28 +106,15 @@ void RunTMVA()
   loader->AddVariable("ProtonTrkLength",   "Proton Trk Length", "F");
   loader->AddVariable("ProtonTrkDistVtx",  "Proton Dist Vtx",   "F");
   loader->AddVariable("ProtonTrkScore",    "Proton Trk Score",  "F");
- // loader->AddVariable("ProtonDeDxPlane0",  "Proton dEdx Pl0",   "F");
- // loader->AddVariable("ProtonDeDxPlane1",  "Proton dEdx Pl1",   "F");
- // loader->AddVariable("ProtonDeDxPlane2",  "Proton dEdx Pl2",   "F");
   loader->AddVariable("ProtonNHitsY",      "Proton NHits Y",    "F");
   loader->AddVariable("ProtonPhotonPID",   "Proton Photon BDT", "F");
 
   // --- Shower 1 ---
   loader->AddVariable("Shr1NHitsY",        "Shr1 NHits Y",      "F");
   loader->AddVariable("Shr1VtxDist",       "Shr1 Dist Vtx",     "F");
-  //loader->AddVariable("Shr1DeDxPlane0",    "Shr1 dEdx Pl0",     "F");
- // loader->AddVariable("Shr1DeDxPlane1",    "Shr1 dEdx Pl1",     "F");
- // loader->AddVariable("Shr1DeDxPlane2",    "Shr1 dEdx Pl2",     "F");
   loader->AddVariable("Shr1OpenAngle",     "Shr1 Open Angle",   "F");
 
-  // --- Shower 2 ---
-  //loader->AddVariable("Shr2NHitsY",        "Shr2 NHits Y",      "F");
- // loader->AddVariable("Shr2VtxDist",       "Shr2 Dist Vtx",     "F");
- // loader->AddVariable("Shr2DeDxPlane0",    "Shr2 dEdx Pl0",     "F");
- // loader->AddVariable("Shr2DeDxPlane1",    "Shr2 dEdx Pl1",     "F");
- // loader->AddVariable("Shr2DeDxPlane2",    "Shr2 dEdx Pl2",     "F");
- // loader->AddVariable("Shr2OpenAngle",     "Shr2 Open Angle",   "F");
-
+ 
   // --- Opening angles ---
   loader->AddVariable("AngleMuonPion",     "Angle #mu-#pi",      "F");
   loader->AddVariable("AngleProtonPion",   "Angle p-#pi",        "F");
@@ -142,21 +122,12 @@ void RunTMVA()
   loader->AddVariable("AngleShr1Muon",     "Angle Shr1-#mu",     "F");
   loader->AddVariable("AngleShr1Pion",     "Angle Shr1-#pi",     "F");
   loader->AddVariable("AngleShr1Proton",   "Angle Shr1-p",       "F");
- // loader->AddVariable("AngleShr2Muon",     "Angle Shr2-#mu",     "F");
- // loader->AddVariable("AngleShr2Pion",     "Angle Shr2-#pi",     "F");
- // loader->AddVariable("AngleShr2Proton",   "Angle Shr2-p",       "F");
-
+ 
   // --- Inter-candidate distances ---
   loader->AddVariable("DistMuonPion",      "Dist #mu-#pi [cm]",  "F");
   loader->AddVariable("DistProtonPion",    "Dist p-#pi [cm]",    "F");
   loader->AddVariable("DistProtonMuon",    "Dist p-#mu [cm]",    "F");
-  //loader->AddVariable("DistShr1Muon",      "Dist Shr1-#mu [cm]", "F");
-  //loader->AddVariable("DistShr1Pion",      "Dist Shr1-#pi [cm]", "F");
-  //loader->AddVariable("DistShr1Proton",    "Dist Shr1-p [cm]",   "F");
-  //loader->AddVariable("DistShr2Muon",      "Dist Shr2-#mu [cm]", "F");
-  //loader->AddVariable("DistShr2Pion",      "Dist Shr2-#pi [cm]", "F");
- // loader->AddVariable("DistShr2Proton",    "Dist Shr2-p [cm]",   "F");
-
+ 
   // -----------------------------------------------------------
   // Spectator variables (stored but NOT used in training)
   // Useful for cross-checks and cut-and-count after TMVA
@@ -177,6 +148,7 @@ void RunTMVA()
     "",   // background cut (empty = use all)
     "nTrain_Signal=0:nTrain_Background=0:"
     "SplitMode=Random:NormMode=NumEvents:!V"
+
   );
 
   // -----------------------------------------------------------
@@ -223,29 +195,34 @@ void RunTMVA()
     "nCuts=20"
   );
 
-  // ---- 3. k-Nearest Neighbours ----
-  // nkNN           : number of neighbours
-  // ScaleFrac      : fraction of events used to compute variable scale
-  // SigmaFact      : kernel width scaling factor
-  // Kernel=Gaus    : Gaussian kernel weighting
-  // UseKernel      : enable kernel weighting (smoother boundaries)
-  // UseWeight      : use event weights
-  // !Trim          : do not trim outlier events
-/*  factory->BookMethod(
-    loader,
-    TMVA::Types::kKNN,
-    "KNN",
-    "!H:!V:"
-    "nkNN=20:"
-    "ScaleFrac=0.8:"
-    "SigmaFact=1.0:"
-    "Kernel=Gaus:"
-    "UseKernel=T:"
-    "UseWeight=T:"
-    "!Trim"
-  );
-*/
-  // ---- 4. Likelihood (Naive Bayes with PDF estimation) ----
+    
+    
+    // ---- 3. BDTg (Gradient boost, deeper trees, smaller learning rate) ----
+      // A second gradient BDT configuration with:
+      //   deeper trees (MaxDepth=4) to capture higher-order interactions
+      //   more trees (NTrees=800) to compensate for the lower shrinkage
+      //   lower Shrinkage=0.05 (slower learning = better generalisation)
+      //   NegWeightTreatment=Pray : keeps events with negative PoT weights
+      //     as-is instead of ignoring them (relevant for dirt/overlay MC)
+      factory->BookMethod(
+        loader,
+        TMVA::Types::kBDT,
+        "BDTg",
+        "!H:!V:"
+        "NTrees=800:"
+        "MinNodeSize=2.0%:"
+        "MaxDepth=4:"
+        "BoostType=Grad:"
+        "Shrinkage=0.05:"
+        "UseBaggedBoost:"
+        "BaggedSampleFraction=0.6:"
+        "nCuts=25:"
+        "NegWeightTreatment=Pray:"
+        "DoBoostMonitor"
+      );
+  
+ /*
+    // ---- 4. Likelihood (Naive Bayes with PDF estimation) ----
   // TransformOutput : apply logit transform to output (maps to [0,1])
   // PDFInterpol=Spline2 : use spline interpolation for PDFs
   // NSmooth         : number of smoothing iterations on PDFs
@@ -276,7 +253,7 @@ void RunTMVA()
     "NAvEvtPerBin=50:"
     "VarTransform=Decorrelate"
   );
-
+*/
   // -----------------------------------------------------------
   // Train, test and evaluate all methods
   // -----------------------------------------------------------

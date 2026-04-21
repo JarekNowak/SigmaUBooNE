@@ -327,10 +327,12 @@ void Sigma::Loop()
     bool sel_pion_candidate  = false;
     bool sel_proton_candidate= false;
 
+      double proton_mom=0;
+      double pion_mom=0;
     // ---- Truth-level decay product counting ----
     for (int i = 0; i < (int)mc_decay_pdg->size(); i++) {
-      if (mc_decay_pdg->at(i) ==  2212) mc_decay++;  // proton
-      if (mc_decay_pdg->at(i) == -211)  mc_decay++;  // pi-
+        if (mc_decay_pdg->at(i) ==  2212) {mc_decay++; proton_mom = mc_decay_mom->at(i);}  // proton
+        if (mc_decay_pdg->at(i) == -211)  {mc_decay++; pion_mom = mc_decay_mom->at(i);} // pi-
     }
 
     // ---- FIX: corrected fiducial volume cut (all three axes, no impossible condition) ----
@@ -342,7 +344,8 @@ void Sigma::Loop()
     if (!inFV_truth || inDeadRegion) continue;
 
     // ---- Signal definition: anti-nu_mu + Sigma0 with proton + pi- decay products ----
-    if ((mc_nu_pdg == -14) && (mc_hyperon_pdg == 3212) && (mc_decay == 2)) IsSignal = true;
+    if ((mc_nu_pdg == -14) && (mc_hyperon_pdg == 3212) && (mc_decay == 2)
+        && proton_mom>0.3 && pion_mom>0.1) IsSignal = true;
 
     // ---- Sample assignment ----
     if (IsSignal  && jentry <= NEvents[0]) s = 0;  // Sigma signal
