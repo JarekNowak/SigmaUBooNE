@@ -1,0 +1,34 @@
+# ROOT output and binary artefacts
+*.root
+*.so
+*.d
+*.pcm
+
+# ACLiC / cling
+*_C.d
+*_C.so
+*_C_ACLiC_dict_rdict.pcm
+
+# Experimental retrain directories (not production)
+SigmaDataset_v2/
+SigmaDataset_reg/
+
+# LaTeX build artefacts (keep .tex and .pdf)
+Docs/*.aux
+Docs/*.log
+Docs/*.out
+Docs/*.toc
+Docs/*.bbl
+Docs/*.blg
+Docs/*.synctex.gz
+
+# Published reference PDFs (copyright; large)
+Docs/references/
+
+# Old / backup files
+old/
+Sigma_old.C
+Sigma.C.orig
+
+# Shell temporary files
+*.tmp
