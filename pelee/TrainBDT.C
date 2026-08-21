@@ -35,7 +35,10 @@ static const char* kVars[] = {
   // SigmaSelection.C, which keeps its own copy of this list. The reader there
   // registers variables positionally, so a mismatch silently feeds the BDT the
   // wrong numbers rather than failing.
-  "Shower1MoliereAvg" };
+  "Shower1MoliereAvg",
+  // Second-Shower Veto block -- same order as BDTV in SigmaSelection.C.
+  // SliceUnassocFrac/Hits excluded -- NoCR artefact, see SigmaSelection.C.
+  "SliceClustFrac","SecondShowerNHit","SecondShowerDot","ShrSubClusters" };
 
 // Train one fold.  `trainCut` selects the events used for THIS fold's training;
 // the resulting weights are applied (elsewhere) to the complementary events.

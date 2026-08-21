@@ -77,7 +77,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   };
 
   const std::string SIG =
-    "/data/uboone/prod_hyperon_sigmazero_reco1_prodnuwro_mcc9/pelee/Hyperons_Nuwro_NoCR_pelle_1994.root";
+    "/data/uboone/prod_hyperon_sigmazero_reco1_prodnuwro_mcc9/pelee/Hyperons_Nuwro_WithCR_pelee_2982.root";
 
   const std::string NUMI = "/data/uboone/new_numi_flux/";
   std::vector<FileDesc> files = {
@@ -99,7 +99,9 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
 
   // ── POT / normalization (editable block) ─────────────────────────────────────
   //  Default exposure: FULL RHC data POT (Run1+2+4), all samples scaled to it.
-  //    signal NuWro generated POT : 2.1764e23  (sum of nuselection/SubRun "pot")
+  //    signal NuWro generated POT : 3.41647e23 (sum of nuselection/SubRun "pot";
+  //      Hyperons_Nuwro_WithCR_pelee_2982.root, 64760 entries, 17721 anti-numu CC
+  //      Sigma0 -- supersedes the 1994-file sample, 2.1764e23 / 41244 / 11316)
   //    RHC overlay POT (Run1+2+4a+4b+4c) : 9.94482e21  (/data/uboone/pot.txt RunAll_rhc:
   //      8.99715e20+5.78652e21+7.28265e20+2.37975e21+1.50509e20)
   //    RHC Run1 dirt POT          : 4.21274e20 (/data/uboone/dirt/pot.txt)
@@ -108,7 +110,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   //  error is no longer Run1-sized.  NOTE: dirt is still Run1-RHC only (scaled up);
   //  add Run3b/Run4 dirt to fix that too.
   const double dataPOT   = 1.1526e21;
-  const double signalPOT = 2.1764e23;
+  const double signalPOT = 3.41647e23;
   const double bkgPOT    = 9.94482e21;   // sum of all 5 RHC overlay runs
   const double dirtPOT   = 4.21274e20;
 
@@ -162,9 +164,25 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     // variables above and the classic shower-vs-track-stub discriminant. Appended
     // rather than inserted next to the other Shower1 variables so that no existing
     // bdtv[] index shifts. Kept LAST before the Weight spectator.
-    "Shower1MoliereAvg","Weight" };
-  const int NBV = sizeof(BDTV)/sizeof(BDTV[0]);   // 51
-  float bdtv[51];
+    "Shower1MoliereAvg",
+    // Second-Shower Veto block (gLEE). SliceUnassocFrac is gLEE's "fraction of
+    // unassociated hits in slice": hits in the neutrino slice belonging to no
+    // reconstructed object, which is what a missed low-energy photon leaves behind.
+    // SliceUnassocFrac and SliceUnassocHits are DELIBERATELY EXCLUDED. They separate
+    // almost perfectly -- TMVA separation 0.86 and 0.83, six times any physics
+    // variable -- but the separation comes from the PRODUCTION CHAIN, not physics.
+    // slnunhits is not populated in the hyperon samples: 99.3% of signal events carry
+    // zero unassociated slice hits (mean 7.6) against a mean of 900 in the standard
+    // RHC overlay. This is NOT a cosmic effect: the hyperon sample does contain
+    // cosmics and, by the independent measure of overlay-matched PFPs, carries MORE
+    // of them than the background (15.3% against 9.5%). _closestNuCosmicDist is
+    // identically zero in the same sample, so a whole class of slice/cosmic
+    // bookkeeping variables differs by production chain and will fake discrimination.
+    // Check any future addition for this before trusting it.
+    "SliceClustFrac","SecondShowerNHit","SecondShowerDot","ShrSubClusters",
+    "Weight" };
+  const int NBV = sizeof(BDTV)/sizeof(BDTV[0]);   // 55
+  float bdtv[55];
   float bdtIsOdd = 0;   // event-number parity, spectator for 2-fold CV split
   //  Truth/diagnostic branches (not BDT inputs): let the surviving background be
   //  characterised by interaction type, candidate true identity, π0 content, and
@@ -230,6 +248,13 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   Float_t reco_nu_vtx_sce_x, reco_nu_vtx_sce_y, reco_nu_vtx_sce_z;
   Float_t true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z;
   Float_t topological_score;
+  // Second-Shower-Veto inputs, after the gLEE single-photon analysis: evidence that
+  // a second photon EXISTS even where Pandora never reconstructed a shower from it.
+  // Our pi0 mass variable needs both photons reconstructed and therefore fires on
+  // only a minority of events; these do not.
+  Int_t   slnhits = 0, slnunhits = 0, secondshower_Y_nhit = 0;
+  Float_t slclustfrac = -1.f, secondshower_Y_dot = -2.f;
+  UInt_t  shrsubclusters0 = 0, shrsubclusters1 = 0, shrsubclusters2 = 0;
   Float_t ppfx_cv, weightTune, weightSpline;
 
   std::vector<int>*   mc_pdg              = nullptr;
@@ -287,7 +312,9 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
       "trk_pid_chipr_v","trk_pid_chipi_v","trk_energy_proton_v","trk_range_muon_mom_v",
       "shr_start_x_v","shr_start_y_v","shr_start_z_v","shr_dist_v",
       "shr_energy_y_v","shr_px_v","shr_py_v","shr_pz_v",
-      "shr_tkfit_dedx_y_v","shr_moliere_avg_v","pfnplanehits_Y"
+      "shr_tkfit_dedx_y_v","shr_moliere_avg_v","pfnplanehits_Y",
+      "slnhits","slnunhits","slclustfrac","secondshower_Y_nhit","secondshower_Y_dot",
+      "shrsubclusters0","shrsubclusters1","shrsubclusters2"
     };
     for (auto& b : branches) t->SetBranchStatus(b, 1);
 
@@ -338,6 +365,15 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     t->SetBranchAddress("shr_pz_v", &shr_pz_v);
     t->SetBranchAddress("shr_tkfit_dedx_y_v", &shr_tkfit_dedx_y_v);
     t->SetBranchAddress("shr_moliere_avg_v", &shr_moliere_avg_v);
+    // Guarded: absent from some ntuple generations; the sentinels above then stand.
+    if (t->GetBranch("slnhits"))             t->SetBranchAddress("slnhits", &slnhits);
+    if (t->GetBranch("slnunhits"))           t->SetBranchAddress("slnunhits", &slnunhits);
+    if (t->GetBranch("slclustfrac"))         t->SetBranchAddress("slclustfrac", &slclustfrac);
+    if (t->GetBranch("secondshower_Y_nhit")) t->SetBranchAddress("secondshower_Y_nhit", &secondshower_Y_nhit);
+    if (t->GetBranch("secondshower_Y_dot"))  t->SetBranchAddress("secondshower_Y_dot", &secondshower_Y_dot);
+    if (t->GetBranch("shrsubclusters0"))     t->SetBranchAddress("shrsubclusters0", &shrsubclusters0);
+    if (t->GetBranch("shrsubclusters1"))     t->SetBranchAddress("shrsubclusters1", &shrsubclusters1);
+    if (t->GetBranch("shrsubclusters2"))     t->SetBranchAddress("shrsubclusters2", &shrsubclusters2);
     t->SetBranchAddress("pfnplanehits_Y", &pfnplanehits_Y);
 
     const Long64_t nentries = t->GetEntries();
@@ -590,9 +626,24 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
         bdtv[39]=lamPointAngle; bdtv[40]=lamImpact; bdtv[41]=lamDecayDist;
         bdtv[42]=phoPointAngle; bdtv[43]=phoImpact; bdtv[44]=lamGamAngle; bdtv[45]=sigMuAngle;
         bdtv[46]=pi0Mass; bdtv[47]=pi0Cos; bdtv[48]=shr2E;
-        bdtv[49]=(shower1_index > -1 && shr_moliere_avg_v)
-                 ? shr_moliere_avg_v->at(shower1_index) : -1.0f;
-        bdtv[50]=W;
+        // Shower Moliere angle, in DEGREES (range ~0-180). The branch carries
+        // FLT_MAX (3.4e38) when undefined -- 0.03% of background events -- which
+        // would swamp any BDT split, so anything outside the physical range is
+        // mapped onto the same -1 sentinel used for a missing shower.
+        {
+          float mol = (shower1_index > -1 && shr_moliere_avg_v)
+                      ? shr_moliere_avg_v->at(shower1_index) : -1.0f;
+          if ( !std::isfinite(mol) || mol < 0.f || mol > 180.f ) mol = -1.0f;
+          bdtv[49] = mol;
+        }
+        // --- Second-Shower Veto block (slice unassociated-hit variables excluded,
+        //     see the comment on BDTV above) ---
+        bdtv[50] = std::isfinite(slclustfrac) ? slclustfrac : -1.0f;
+        bdtv[51] = float(secondshower_Y_nhit);
+        bdtv[52] = (secondshower_Y_dot >= -1.f && secondshower_Y_dot <= 1.f)
+                   ? secondshower_Y_dot : -2.0f;
+        bdtv[53] = float(shrsubclusters0 + shrsubclusters1 + shrsubclusters2);
+        bdtv[54] = W;
         bdtIsOdd = (float)(((evt % 2) + 2) % 2);   // event-number parity (CV fold tag)
         for (int k = 0; k < NBV - 1; k++) if (!std::isfinite(bdtv[k])) bdtv[k] = -1.0f;
         // Score with the fold that did NOT train on this event: even→B, odd→A.
