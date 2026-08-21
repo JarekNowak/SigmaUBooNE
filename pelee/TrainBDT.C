@@ -30,7 +30,12 @@ static const char* kVars[] = {
   "LambdaMass","SigmaMass","TopologicalScore","NTracks","NShowers",
   "LambdaPointAngle","LambdaImpact","LambdaDecayDist","PhotonPointAngle","PhotonImpact",
   "LambdaGammaAngle","SigmaMuonAngle",
-  "Pi0Mass","Pi0Gammadot","Shower2Energy" };
+  "Pi0Mass","Pi0Gammadot","Shower2Energy",
+  // Shower Moliere angle -- must stay in the SAME ORDER as BDTV in
+  // SigmaSelection.C, which keeps its own copy of this list. The reader there
+  // registers variables positionally, so a mismatch silently feeds the BDT the
+  // wrong numbers rather than failing.
+  "Shower1MoliereAvg" };
 
 // Train one fold.  `trainCut` selects the events used for THIS fold's training;
 // the resulting weights are applied (elsewhere) to the complementary events.

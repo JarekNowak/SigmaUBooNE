@@ -157,9 +157,14 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     "LambdaMass","SigmaMass","TopologicalScore","NTracks","NShowers",
     "LambdaPointAngle","LambdaImpact","LambdaDecayDist","PhotonPointAngle","PhotonImpact",
     "LambdaGammaAngle","SigmaMuonAngle",
-    "Pi0Mass","Pi0Gammadot","Shower2Energy","Weight" };
-  const int NBV = sizeof(BDTV)/sizeof(BDTV[0]);   // 50
-  float bdtv[50];
+    "Pi0Mass","Pi0Gammadot","Shower2Energy",
+    // Shower Moliere angle: lateral spread, orthogonal to the energy and hit-count
+    // variables above and the classic shower-vs-track-stub discriminant. Appended
+    // rather than inserted next to the other Shower1 variables so that no existing
+    // bdtv[] index shifts. Kept LAST before the Weight spectator.
+    "Shower1MoliereAvg","Weight" };
+  const int NBV = sizeof(BDTV)/sizeof(BDTV[0]);   // 51
+  float bdtv[51];
   float bdtIsOdd = 0;   // event-number parity, spectator for 2-fold CV split
   //  Truth/diagnostic branches (not BDT inputs): let the surviving background be
   //  characterised by interaction type, candidate true identity, π0 content, and
@@ -585,7 +590,9 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
         bdtv[39]=lamPointAngle; bdtv[40]=lamImpact; bdtv[41]=lamDecayDist;
         bdtv[42]=phoPointAngle; bdtv[43]=phoImpact; bdtv[44]=lamGamAngle; bdtv[45]=sigMuAngle;
         bdtv[46]=pi0Mass; bdtv[47]=pi0Cos; bdtv[48]=shr2E;
-        bdtv[49]=W;
+        bdtv[49]=(shower1_index > -1 && shr_moliere_avg_v)
+                 ? shr_moliere_avg_v->at(shower1_index) : -1.0f;
+        bdtv[50]=W;
         bdtIsOdd = (float)(((evt % 2) + 2) % 2);   // event-number parity (CV fold tag)
         for (int k = 0; k < NBV - 1; k++) if (!std::isfinite(bdtv[k])) bdtv[k] = -1.0f;
         // Score with the fold that did NOT train on this event: even→B, odd→A.
