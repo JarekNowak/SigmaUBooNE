@@ -180,9 +180,17 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     // bookkeeping variables differs by production chain and will fake discrimination.
     // Check any future addition for this before trusting it.
     "SliceClustFrac","SecondShowerNHit","SecondShowerDot","ShrSubClusters",
+    // Recomputed replacements for the two excluded branches: the slice hits that
+    // belong to no reconstructed PFP, which is the quantity gLEE's SSV actually
+    // wants. Built from slnhits and pfnhits, both of which ARE populated in the
+    // hyperon production. Between the hyperon sample and the RHC overlay these
+    // overlap 93.4% and 95.2% with separations of 0.007 and 0.005, against 12.5%
+    // and 0.774 for the slnunhits branch -- i.e. they carry the physics without
+    // the production-chain artefact.
+    "UnassocHitsCalc","UnassocFracCalc",
     "Weight" };
-  const int NBV = sizeof(BDTV)/sizeof(BDTV[0]);   // 55
-  float bdtv[55];
+  const int NBV = sizeof(BDTV)/sizeof(BDTV[0]);   // 57
+  float bdtv[57];
   float bdtIsOdd = 0;   // event-number parity, spectator for 2-fold CV split
   //  Truth/diagnostic branches (not BDT inputs): let the surviving background be
   //  characterised by interaction type, candidate true identity, π0 content, and
@@ -285,6 +293,8 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   std::vector<float>* shr_tkfit_dedx_y_v  = nullptr;
   std::vector<float>* shr_moliere_avg_v   = nullptr;
   std::vector<int>*   pfnplanehits_Y      = nullptr;
+  std::vector<unsigned int>* pfnhits      = nullptr;  // hits per PFP, for the
+                                                      // recomputed unassociated count
 
   // ── File loop ───────────────────────────────────────────────────────────────
   for (size_t i_f = 0; i_f < files.size(); i_f++) {
@@ -312,7 +322,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
       "trk_pid_chipr_v","trk_pid_chipi_v","trk_energy_proton_v","trk_range_muon_mom_v",
       "shr_start_x_v","shr_start_y_v","shr_start_z_v","shr_dist_v",
       "shr_energy_y_v","shr_px_v","shr_py_v","shr_pz_v",
-      "shr_tkfit_dedx_y_v","shr_moliere_avg_v","pfnplanehits_Y",
+      "shr_tkfit_dedx_y_v","shr_moliere_avg_v","pfnplanehits_Y","pfnhits",
       "slnhits","slnunhits","slclustfrac","secondshower_Y_nhit","secondshower_Y_dot",
       "shrsubclusters0","shrsubclusters1","shrsubclusters2"
     };
@@ -375,6 +385,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     if (t->GetBranch("shrsubclusters1"))     t->SetBranchAddress("shrsubclusters1", &shrsubclusters1);
     if (t->GetBranch("shrsubclusters2"))     t->SetBranchAddress("shrsubclusters2", &shrsubclusters2);
     t->SetBranchAddress("pfnplanehits_Y", &pfnplanehits_Y);
+    if (t->GetBranch("pfnhits")) t->SetBranchAddress("pfnhits", &pfnhits);
 
     const Long64_t nentries = t->GetEntries();
     for (Long64_t jentry = 0; jentry < nentries; jentry++) {
@@ -643,7 +654,16 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
         bdtv[52] = (secondshower_Y_dot >= -1.f && secondshower_Y_dot <= 1.f)
                    ? secondshower_Y_dot : -2.0f;
         bdtv[53] = float(shrsubclusters0 + shrsubclusters1 + shrsubclusters2);
-        bdtv[54] = W;
+        // slice hits belonging to no reconstructed PFP (see the BDTV comment)
+        {
+          long pfsum = 0;
+          if ( pfnhits ) for ( auto h : *pfnhits ) pfsum += h;
+          float una = ( slnhits > 0 ) ? float(slnhits - pfsum) : -1.0f;
+          if ( una < 0.f && slnhits > 0 ) una = 0.f;
+          bdtv[54] = una;
+          bdtv[55] = ( slnhits > 0 && una >= 0.f ) ? una / float(slnhits) : -1.0f;
+        }
+        bdtv[56] = W;
         bdtIsOdd = (float)(((evt % 2) + 2) % 2);   // event-number parity (CV fold tag)
         for (int k = 0; k < NBV - 1; k++) if (!std::isfinite(bdtv[k])) bdtv[k] = -1.0f;
         // Score with the fold that did NOT train on this event: even→B, odd→A.

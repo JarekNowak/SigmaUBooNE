@@ -38,7 +38,8 @@ static const char* kVars[] = {
   "Shower1MoliereAvg",
   // Second-Shower Veto block -- same order as BDTV in SigmaSelection.C.
   // SliceUnassocFrac/Hits excluded -- NoCR artefact, see SigmaSelection.C.
-  "SliceClustFrac","SecondShowerNHit","SecondShowerDot","ShrSubClusters" };
+  "SliceClustFrac","SecondShowerNHit","SecondShowerDot","ShrSubClusters",
+  "UnassocHitsCalc","UnassocFracCalc" };
 
 // Train one fold.  `trainCut` selects the events used for THIS fold's training;
 // the resulting weights are applied (elsewhere) to the complementary events.
