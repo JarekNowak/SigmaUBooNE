@@ -1,0 +1,469 @@
+# MicroBooNE Sigma0 analysis
+
+Three selections live in this repo. They are fully independent — different ntuple
+formats, different samples, separate inputs and outputs — and can be run side by side.
+
+| chain | format | S | B | purity | role |
+|---|---|---|---|---|---|
+| `SigmaSelection.C` + BDT | PeLEE | 4.20 | 778 | 0.54% | **the analysis**: the only chain that can see data, EXT and dirt |
+| `DumpBDTHyp.C` + BDT | hypana | 19.3 | 670 | 2.8% | truth studies; candidate purity, backtracking |
+| `SigmaLambdaSel.C` | hypana | 1.39 | 4.1 | **25%** | **best performing**; needs wire activity, so MC-only for now |
+
+All yields are POT-scaled to the full RHC data exposure 1.1526e21 (see
+[POT normalisation](#pot-normalisation)). The three are not alternatives to choose
+between yet: the Lambda-style chain wins decisively on purity and on robustness to
+background systematics, but until data/EXT/dirt exist in hypana format it cannot
+produce a result on its own.
+
+## Environment
+
+Anything that loads TMVA from an **ACLiC-compiled** macro (i.e. `SigmaSelection.C+`
+once BDT weights exist) needs a shim on this machine: `/etc/flexiblasrc.d/netlib.conf`
+registers a BLAS backend whose library is not installed, and cling aborts with exit 1
+and no message beyond `libflexiblas_netlib.so: cannot open shared object file`.
+Interpreted TMVA (`TrainBDT.C`) is unaffected, which makes it look like a code bug.
+
+```bash
+mkdir -p ~/lib/flexiblas-shim
+ln -sf /usr/lib64/flexiblas/libflexiblas_openblas-openmp.so \
+       ~/lib/flexiblas-shim/libflexiblas_netlib.so
+export LD_LIBRARY_PATH=$HOME/lib/flexiblas-shim:$LD_LIBRARY_PATH
+```
+
+Setting `FLEXIBLAS=` alone does not fix it. Two other traps: a stale
+`SigmaSelection_C.so` causes a separate silent exit-1 (delete it and use `.C++` to
+force a clean rebuild), and macro output is block-buffered, so a crashed run leaves an
+**empty** log — absence of output says nothing about where it died.
+
+## Main analysis — PeLEE ntuples
+
+Sigma0 selection on standard PeLEE ntuples (tree
+`nuselection/NeutrinoSelectionFilter`), NuWro hyperon-enhanced signal + all five RHC
+overlay runs (Run 1+2+4a+4b+4c) + dirt + NuWro fake-data, with a gradient-boosted BDT
+as the final discriminant under two-fold cross-validation (folds trained on even/odd
+event numbers, each applied to the events it did not train on). All work is in
+`pelee/`; run from there:
+
+```bash
+root -l -b -q 'SigmaSelection.C++'  # 1st pass -> SigmaHists.root + BDTInput.root (BDTG passes through)
+root -l -b -q TrainBDT.C            # train 2 folds -> SigmaBDT_A/, SigmaBDT_B/
+root -l -b -q 'SigmaSelection.C+'   # 2nd pass -> applies the cross-validated BDTG
+root -l -b -q 'PlotSigma.C+'        # plots -> figs/stack/, figs/shape/
+```
+
+The BDT bootstraps itself: with no weights present the BDTG stage passes through and
+dumps the training tree; after training, re-running applies the cut.
+
+Source: `SigmaSelection.C`, `SigmaSelConfig.h`, `SigmaFV.h`, `PidAssign.h`,
+`TrainBDT.C`, `PlotSigma.C`. Samples/POT are an editable block at the top of
+`SigmaSelection.C` (default exposure = full RHC data POT 1.1526e21; background overlay
+POT 9.94482e21). `ScanPeleeBDT.C` relocates the operating point from `BDTInput.root`.
+
+### Key elements
+
+- **Cut chain** (9 stages): FiducialV, CosmicVeto (`topological_score`>0.20),
+  NShowers, MuonCandidate, ProtonCandidate, PionCandidate, NTracksCut, BDTG.
+- **The proton and pion candidates are OPTIONAL** (`requireProtonPion=false`). They
+  were never PID cuts — they demanded ≥1 and ≥2 non-muon tracks — and because roughly
+  half the signal has no reconstructed pion they removed more signal than background
+  (−31.6%/−18.3% and −52.9%/−43.5%), more than halving the figure of merit. Events
+  without a pair are kept, every pair-dependent BDT input carries a sentinel, and the
+  input `HasPair` flags them. Those two cut-flow rows therefore repeat MuonCandidate.
+  Set `requireProtonPion=true` to restore the old chain.
+- **Joint proton/pion assignment** (`PidAssign.h`): each non-muon track is scored
+  separately for the two roles with a quadratic logistic model and the best ordered
+  pair is taken. Against HyperonProduction truth this raises pion-candidate purity
+  from 33.5% to 42.5% at no cost in efficiency. The old rule ranked tracks by a single
+  monotonic discriminant and took the extremes, which cannot isolate a pion whose
+  ionisation sits in a band between minimum-ionising and proton-like.
+- **Sigma0 mass** reconstructed from the per-PFP shower energy `shr_energy_y_v` (the
+  scalar shower-energy branch is mostly sentinel).
+- **57 BDT inputs**: track PID/kinematics, inter-candidate distances/angles, Lambda &
+  Sigma0 masses, shower energy/size, Lambda/gamma vertex-pointing, pi0 (di-photon)
+  variables, the second-shower block, and `HasPair`.
+- **Operating point** `BDT_MIN = 0.562`, the out-of-sample FoM peak.
+
+### Results
+
+Scaled to RHC data POT, with the unbiased two-fold cross-validation:
+
+| Stage | Raw signal | Eff [%] | S | B | Purity [%] | S/sqrt(S+B) |
+|---|---|---|---|---|---|---|
+| MuonCandidate | 3277 | 50.84 | 11.055 | 22927.4 | 0.048 | 0.0730 |
+| NTracksCut | 3226 | 50.05 | 10.883 | 20618.2 | 0.053 | 0.0758 |
+| **BDTG (final)** | **1245** | **19.31** | **4.200** | **777.9** | **0.537** | **0.1502** |
+
+Training ROC-integral 0.848 (fold A) / 0.846 (fold B).
+
+**Caveat on the operating point.** At the peak a 2% systematic on the background is
+±15.6 events against 4.2 signal, and purity never exceeds ~0.5% anywhere on this
+curve. `S/sqrt(S+B)` cannot see that, so the systematic budget — not the counting
+metric — should ultimately set `BDT_MIN`. Rescan with `ScanPeleeBDT.C` after any
+change to the training or the preselection.
+
+## Truth-study chain — HyperonProduction ("hypana") ntuples
+
+The PeLEE truth record stops at the primary vertex and never contains the
+Sigma0 → Lambda gamma → p pi- gamma chain, so it cannot say what a candidate really
+is. HyperonProduction backtracks every PFP, which is what makes candidate purity,
+the pion candidate and the photon measurable at all. `HypInput.h` reads those ntuples
+through the same variable names the PeLEE selection uses.
+
+```bash
+root -l -b -q HypCutFlow.C                   # POT-weighted cut flow + candidate purity
+root -l -b -q 'DumpBDTHyp.C("BDTHyp.root")'  # training tree from lists/
+root -l -b -q AblateBDT.C                    # 2-fold training + variable-block ablation
+root -l -b -q CurveBDT.C                     # efficiency curve -> bdt_efficiency_curve.png
+root -l -b -q PeakBDT.C                      # locate the FoM peak
+root -l -b -q BkgDisplay.C                   # event displays of surviving background
+```
+
+File lists are repo-tracked in `pelee/lists/`; regenerate by globbing `*_hypana.root`
+under the GENIE run3b signal and RHC overlay hypana directories. Operating point in
+`HypConfig.h` (`BDTG_CUT = 0.554`).
+
+**Neutrino-slice requirement.** PeLEE applies one implicitly — 58.3% of its overlay
+events have `nslice==0`, no PFPs and no usable vertex, so they die at the fiducial
+cut. hypana attaches a Pandora vertex to those events regardless, so they survived and
+inflated the background 2.4x. The matching quantity is `flash_match_nu_slice_ID >= 0`
+(missing in 57.0% of hypana events), added as an explicit `SliceID` stage. With it the
+two chains agree to 6-8% throughout.
+
+### What the truth says
+
+Candidate purity on signal at preselection: muon 93.5%, photon 72.1%, proton 66.4%,
+pion 46.7%. Only **51.4%** of selected signal events contain a reconstructed true pi-
+at all — a reconstruction limit no selection or classifier work can reach, and the
+binding constraint on any pion-based approach.
+
+The Lambda mass separates far less than its ranking suggests, and not for the reason
+first assumed. HyperonProduction's `trk_energy_proton` is the proton **momentum**, not
+the kinetic energy the PeLEE branch of the same name carries; `HypInput.h` and
+`DumpBDTHyp.C` now convert it. With the proton right, the signal peak is centred
+(median 1.111 GeV) and 54.6% of paired signal sits within 20 MeV of the true mass --
+but so does 34.9% of paired background, up from 18.8%. The paired background is
+largely genuine p + pi from Delta production at the primary vertex, whose invariant
+mass with correct momenta sits just above the p+pi threshold, exactly where the
+Lambda is. Fixing the reconstruction sharpened both and left the classifier
+unchanged (AUC 0.828). The **main PeLEE analysis was never affected**: its branch is
+genuinely kinetic energy. `BkgDisplay.C` shows this one event at a time — of ten background
+events that fake a Lambda, none contained a true pi-.
+
+### Measured dead ends
+
+- **More signal MC does not help.** The out-of-sample AUC did not move when the signal
+  sample grew 25%.
+- **Lambda displacement variables do not work** at this resolution: 1.85 cm flight
+  against 5.54 cm resolution, truth correlation r = −0.014.
+- **Better candidate assignment helps background almost equally**, because the
+  background's Lambda mass is combinatoric and benefits from the same improvement.
+- **Correcting the proton momentum helps background almost equally** too, for the
+  same reason (Delta -> p pi sits at the Lambda mass). Third instance of the pattern.
+  It also barely matters for the mass itself: the Lambda -> p pi Q-value is 38 MeV,
+  so the proton is nearly at rest in the Lambda frame and the invariant mass is
+  dominated by M_p plus the pion energy. That is why a 2.3x proton error shifted the
+  mass only ~20 MeV.
+- **Correcting the pion momentum makes the mass WORSE.** The pion candidate uses the
+  muon-hypothesis range momentum, which is 20% low for a pion. Removing that bias
+  (power-law fit, or a 1.25 scale) roughly doubles the Lambda mass width (7.8 -> 12.5
+  or 16.0 MeV half-IQR) because the pion carries most of the decay kinetic energy and
+  scaling it up amplifies its spread. A sharp peak 10 MeV low beats a centred broad
+  one for a classifier. Keep the muon-hypothesis estimator.
+- **The seeded island test does not help the BDT**, though the test itself works (see
+  the Lambda-style chain below). It reaches only ~8% of the BDT's sample, because 70%
+  of events have no proton/pion pair to seed it with and the pair is optional there.
+  It needs wire activity, which only the hypana ntuples carry. *Superseded:* an
+  earlier version of this note said the test was "capped at 27.2%" by short Lambda
+  flight. That was a tuning artefact — see `IslandTune.C`.
+
+## Lambda-style selection — `SigmaLambdaSel.C` (hypana)
+
+The highest-purity chain in the repo, and the one whose sensitivity survives
+background systematics. It follows the Lambda CCQE analysis (Thorpe & Nowak,
+*Hyperon\_Technote\_v2*) rather than the topology+PID chain of `SigmaSelection.C`,
+because at equal efficiency that analysis reaches 91% purity against our 2.8%.
+
+```bash
+root -l -b -q 'SigmaLambdaSel.C("lists/sig_genie.list",0,true)'    # signal
+root -l -b -q 'SigmaLambdaSel.C("lists/bkg_overlay.list",0,false)' # background
+```
+
+Source: `SigmaLambdaSel.C`, `LambdaStyle.h` (range momenta, V-fit secondary vertex,
+pair features), `Island.h` (connectedness test), `SigmaFV.h`, `HypInput.h`.
+
+### What it does differently
+
+- **Every ordered pair is scored**, not each track separately. `PidAssign.h` scores a
+  track for a role using log10(distance to the *primary* vertex) with coefficient
+  −0.2758 on the pion — it penalises displaced tracks, i.e. exactly the signature of a
+  Lambda that flew. The pair selector's only topological input is the separation of the
+  two track *starts*, which is displacement-agnostic.
+- **The precuts are a preference, not a veto.** Measured on the full samples they are
+  dead weight as a veto: the same FoM with ~20% less signal. The best precut-passing
+  pair is used when one exists, otherwise the best pair of all (`usePrecuts=true`
+  restores the veto).
+- **The decay vertex is fitted** (a V fit, validated to recover 3.78 cm for a true
+  4.00 cm flight), giving a decay length and the pointing angle α. The old
+  closest-approach displacement variables measured uncorrelated with truth (r = −0.014).
+- **The connectedness island test is a cut**, applied last.
+
+### Operating point
+
+`LAM_MASS_WIN = 0.020`, `COS_ALPHA_MIN = 0.95`, decay length > 0.5 cm, island on
+**≥ 2 planes**, no precut veto. Chosen from a full-statistics scan (`IslandAna.C`) and
+checked out-of-sample by event parity (`IslandXVal.C`).
+
+| stage | raw sig | raw bkg | S | B |
+|---|---|---|---|---|
+| AllEvents | 15043 | 725432 | 290.1 | 300821 |
+| SliceID | 7801 | 307435 | 150.4 | 127486 |
+| MuonCandidate | 3043 | 48708 | 58.7 | 20198 |
+| PairCandidate | 921 | 20350 | 17.8 | 8438 |
+| LambdaMass ±20 MeV | 504 | 6519 | 9.72 | 2703 |
+| PointingAlpha | 144 | 267 | 2.78 | 110.7 |
+| **Island (≥2 planes)** | **72** | **10** | **1.39** | **4.15** |
+
+Purity 25%, absolute efficiency 0.48%, and **97.2% of surviving signal has true Lambda
+flight > 2 cm** against 43% in the BDT chain — the displaced-vertex bias is cured,
+which was the point of the rewrite.
+
+The **one-plane** point (`islandPlanes=1`) gives S = 1.99, B = 19.5 on 103/47 raw
+events. Prefer it when the background estimate matters more than purity: the two-plane
+background rests on **10 MC events** at 0.41 POT-weight each, so B = 4.15 ± 1.3.
+
+### Why S/√(S+B) is the wrong metric here
+
+With a fractional systematic *f* on the background, using S/√(S+B+(fB)²):
+
+| f | BDT chain (S 19.3, B 670) | Lambda-style (S 1.39, B 4.15) |
+|---|---|---|
+| 0% | 0.736 | 0.593 |
+| 7% | 0.359 | 0.590 |
+| 15% | 0.186 | 0.571 |
+| 30% | 0.095 | 0.508 |
+
+The crossover is at ~7%, and the technote quotes 30–60% on RES/DIS backgrounds. At any
+realistic systematic the high-purity chain wins. Every operating point in this repo was
+historically chosen with f = 0, which systematically favoured the BDT chains.
+
+### Island finding — `Island.h`
+
+Build a wire × time grid of filtered activity, seed clusters at the muon / proton /
+pion track starts converted to (wire, tick) per plane, grow them, and require the
+**proton and pion clusters to merge while the muon stays separate**. Per-plane, so a
+bad view can be fallen back on. Coordinate transforms were derived and validated in
+`ctcalib.C` (none existed): `wire = (A·y + B·z + C)/0.3` reproduces 98.7% of stored
+vertex wires within 2 wires; `tick = 18.1509·x + 818.1`.
+
+**Connectivity is tuned** (`CDW = 2` wires, `CDT = 20` ticks; was 3 × 40). The original
+40 ticks is 2.2 cm of drift, so vertex activity bridged the decay V to the muon
+whenever the Lambda flew less than ~3 cm. Seeds were never the problem — they land on
+activity 98% of the time. Retuning lifted the signal pass rate at 2–3 cm flight from
+45% to 80%, i.e. into the "highly efficient above 2 cm" regime the technote describes:
+
+| true flight | 3×40 (old) | 2×20 (now) |
+|---|---|---|
+| 1–2 cm | 19% | 43% |
+| 2–3 cm | 45% | 80% |
+| 3–5 cm | 70% | 85% |
+| 5–10 cm | 86% | 91% |
+
+On **one** plane the FoM is a flat plateau across every connectivity — looser settings
+admit background as fast as signal. The gain is on **two** planes (6.8× rejection
+against 3.7×). Minimum cluster size, seed radius and an ADC occupancy threshold all
+only remove signal. Do not trust a grid optimiser here: its own pick (cdw 6, minclust
+20, seed radius 5) fails the parity check (0.393 vs 0.264) and is overfit to 11 events.
+
+### Tooling
+
+The island test reads raw wire windows, which is what makes hypana loops slow. Two
+caches make everything downstream cheap:
+
+```bash
+root -l -b -q 'IslandProcess.C("lists/sig_genie.list",0,true,"isl_sig_genie.root",1.9284e-2)'
+root -l -b -q 'IslandCache.C("lists/sig_genie.list",0,true,"islcache_sig.root",1.9284e-2)'
+```
+
+- `IslandProcess.C` → one row per event at MuonCandidate: per-plane island result, V-fit
+  observables, Σ mass, photon and Michel variables, true candidate PDGs, true flight.
+- `IslandCache.C` → the raw wire windows plus seeds for the pre-island superset, so
+  island *parameters* can be re-scanned without touching the files again.
+
+Consumers: `IslandAna.C` (cut flow, placement, flight dependence, background
+composition, threshold scans), `IslandTune.C` (parameter grid; `IslandPoint()` for one
+set with parity split), `IslandXVal.C` (odd/even cross-validation of the operating
+point), `IslandSideband.C` (sideband definitions), `PhotonMichel.C` (the two handles
+below).
+
+### Sidebands
+
+| region | S | B | raw B | S/B |
+|---|---|---|---|---|
+| signal region (blind) | 1.58 | 12.0 | 29 | 13% |
+| mass sideband, +40 to +200 MeV | 0.02 | 10.8 | 26 | 0.2% |
+| α sideband, 0 < cos α < 0.8 | 0.25 | 67.2 | 162 | 0.4% |
+| island-fail region | 1.20 | 98.7 | 238 | 1.2% |
+
+(one-plane point, for statistics). All three are RES/DIS-dominated like the signal
+region. The α sideband is the workhorse. Two things to know: the mass sideband exists
+only *above* the peak — the p+π invariant mass has a kinematic floor at 1.078 GeV — and
+the signal peak sits in the −20…0 MeV bin because the pion runs on the muon range
+hypothesis.
+
+### Two optional handles (`applyMichel`, `photonGap`; default off)
+
+- **Michel tag.** The signal muon is a μ⁺ 100% of the time; the surviving background
+  muon is a true **μ⁻ 78%** (wrong-sign ν_μ CC in RHC). A μ⁺ always decays, a μ⁻
+  captures 75% of the time in argon. Requiring a contained muon to have another PFP
+  starting within 5 cm of its end keeps 78% of signal and 48% of background, and what
+  it removes is **87% true μ⁻**. Validated in background: contained true μ⁺ tagged 25%
+  vs true μ⁻ 16%.
+- **Photon conversion gap.** 18.7% of background "photons" start within 2 cm of the
+  vertex against 3.5% of signal; requiring > 2 cm keeps 95% of signal and removes 21%
+  of background.
+
+Both improve the one-plane point (together: S 1.18, B 5.0, purity 19%, +18% FoM) and
+neither is measurable on the two-plane point, where the background is 8–10 MC events.
+Σ-mass windows were tested and cost more signal than they are worth.
+
+**The photon is otherwise unused in this chain** — `NShowers` already requires a
+shower, so `requirePhoton` is a no-op. Σ mass and photon energy remain untouched.
+
+## POT normalisation
+
+Every $S$ and $B$ in this repo is the expected count in the full RHC dataset,
+**1.1526e21 POT** (`/data/uboone/pot.txt`, RunAll_rhc).
+
+| sample | format | generated POT | scale |
+|---|---|---|---|
+| GENIE hyperon signal, `sig_genie.list` (4851 files) | hypana | 5.9770e22 | 1.9284e-2 |
+| RHC overlay background, `bkg_overlay.list` (14,024 files) | hypana | 6.9701e21 | 1.6536e-1 |
+| &nbsp;&nbsp;— Run 3 slice only, `bkg_overlay_run3.list` (3491 files) | hypana | 2.7795e21 | 4.1468e-1 |
+| NuWro Σ⁰ signal, `sig_nuwro.list` (2981 files) | hypana | 3.4141e23 | 3.3760e-3 |
+| NuWro Σ⁰ signal | PeLEE | 3.41647e23 | 3.374e-3 |
+| RHC overlay (Run 1+2+4a+4b+4c) | PeLEE | 9.94482e21 | 1.159e-1 |
+| Run 1 dirt | PeLEE | 4.21274e20 | 2.736 |
+
+**Never extrapolate POT from a file subset.** An early NuWro scale was taken from the
+first 300 files and was 52% high; POT/file is not uniform across a list. `PotSum.C`
+over the full list gives 3.4141e23, agreeing with the PeLEE `SubRun` sum to 0.07%.
+
+The hypana overlay used to be only the **Run 3** slice (2.78e21 of the 9.94e21 the
+PeLEE chain uses), which is why its per-event weight was 0.41 and why nothing below
+~2 background events could be resolved. Since 2026-09-24 `bkg_overlay.list` also holds
+the RHC overlay extension (Runs 1/2/3/4a, 10,533 files, 4.1906e21 POT, 1,095,671
+events), so the list is 14,024 files at **6.9701e21** POT -- 70% of the full RHC, a
+per-event weight of 0.165, and a background MC statistical error 0.63x its former
+size. POT/event agrees between the two (3.825e15 new vs 3.829e15 existing), so they
+combine without a relative normalisation. Paths:
+`/data/uboone/SigmaFiles/prod_numi_extunbiased_nu_overlay_g4.10.4_flux_run3_rhc_pandora_reco2_reco2/hypana/`.
+
+### Sample bookkeeping notes
+
+- The **NuWro sample is Σ⁰-filtered** (Σ⁰ 28.9%, Λ 28.5%) where the GENIE sample is
+  Λ-dominated (Λ 51.0%, Σ⁰ 7.2%). It can validate Σ yields but never a Λ rate.
+- hypana and PeLEE disagree on raw signal count (17714 vs 6446) only because PeLEE
+  quotes true-Σ⁰-in-FV as its efficiency denominator. At the slice stage they agree
+  event-for-event (9426 vs 9427).
+- The Lambda cross-check (`LambdaSel.C`) reproduces the published Lambda CCQE chain on
+  our files: efficiency 0.79× theirs (expected — our pair selector is provisional and
+  their decay BDT is replaced by cuts), but **signal normalisation 1.61×**, which is
+  GENIE-against-GENIE and still unexplained. Candidates in order: GENIE version/tune
+  (hyperon production is axial-mass sensitive), NuMI flux version, the equivalent-
+  unfiltered exposure quoted for the hyperon-filtered production, FV definition.
+
+## Production status — extending the hypana background
+
+The hypana chain is MC-statistics limited: 10 background events at the two-plane point.
+The fix is more RHC overlay in hypana format. Runs 1, 2 and 3 RHC overlay **reco1** are
+being transferred to `/data/uboone/SigmaFiles/`:
+
+| sample | directory |
+|---|---|
+| Run 1 | `NuMI_Nuw_Flux_Run1_RHC_Reco1_jh/` |
+| Run 2 | `Run2_RHC_Nu_Overlay_reco1/` |
+| Run 3 | `Run3_RHC_Nu_Overlay_Reco1_fix_gen_stash/` |
+
+These are **reco1c**, not reco2: they carry `recob::Wire`, `gaushit`, optical, CRT and
+full truth, but **no Pandora products** (104 branches for Runs 1–2, 124 for Run 3 which
+adds the CRT; the working reco2 input has 272). So they need reco2 before
+HyperonProduction can run:
+
+```
+reco1c ──[reco2_local, 5-FCL chain]──▶ reco2 ──[run_HyperonProduction.fcl]──▶ *_hypana.root
+```
+
+Both stages already exist locally (`~/MicroBooNE/production/reco2_local/` and
+`~/MicroBooNE/HypProductionNuMIFlux/slurm/`), running `uboonecode v08_00_00_85 -q
+e17:prof` inside the SL7 apptainer on SLURM.
+
+**The chain is verified end to end** (2026-09-13, Run 1 file, run 5435 subrun 18):
+reco1c → reco2 in 4 min wall (5 steps, clean) → HyperonProduction in 14 s → an
+ntuple with **142 branches, byte-identical in branch set to the existing Run 3 hypana
+files**, 11 `ct_*` island branches with the wire windows populated (100 wires,
+40–78 hits, 3 vertex wires per event). Events and subruns are preserved at every
+stage, and `sumdata::POTSummary` survives into reco2. No run-period problem: the
+same fcl chain works for a Run 1 file despite having been written for the Run 1-era
+prodnuwro sample, because MicroBooNE's period dependence comes from the conditions
+database keyed on run number.
+
+### How much background this actually buys
+
+**Measured, not assumed.** reco1 holds ~8.6 MB/event (five files sampled: 8.5, 8.8,
+8.3, 7.8, 8.6) and ~40 events/file, and the POT is ~2.6e15/event for Run 1 against
+3.83e15 for the existing Run 3 overlay.
+
+| | events | POT | vs existing |
+|---|---|---|---|
+| existing hypana overlay (Run 3) | 725,995 | 2.7795e21 | — |
+| **extension processed 2026-09-24** (10,533 files) | **1,095,671** | **4.1906e21** | **+151%** |
+| combined `bkg_overlay.list` (14,024 files) | 1,821,666 | 6.9701e21 | **2.51x** |
+| residue still to process (227 files, ~2%) | ~21,000 | ~0.09e21 | +1.3% |
+| to reach the full RHC 9.94e21 | +780,000 | +3.0e21 | needs ~7 TB more reco1 |
+
+So the ×3.6 ceiling implied by the PeLEE/hypana POT ratio requires ~22 TB of reco1
+and a few thousand core-days of reco2. What has landed so far adds 5%, which does
+**not** change the two-plane background estimate (10 MC events → ~10.5). Decide the
+target exposure before committing the CPU: doubling the background is worth ~6 TB and
+~500 core-days; the full RHC exposure is a different scale of undertaking. Disk is not
+the constraint (81 TB free on `/data`), CPU is.
+
+Notes for the full production:
+
+- **`jobtag` collides.** `slurm_reco2.sbatch` derives the working directory from
+  `basename(dirname(input))`, which for this path layout is the last two digits of the
+  run — `54` for run 4954 *and* 5054. Concurrent tasks sharing a tag share a CWD, and
+  art's `mem.db`/`time.db` then collide ("disk I/O error"). Append
+  `$SLURM_ARRAY_TASK_ID` to `WORKDIR` before submitting at scale.
+- **`submit_slurm.sh` rewrites one shared manifest in place**, and a pending array reads
+  its manifest at launch. Use a per-sample manifest and call `sbatch` directly when
+  another array is queued.
+- Its `find` pattern is `*reco1c.root`; these files end `_reco1c_<timestamp>_merged.root`,
+  so pass an explicit list with `-l`.
+- **reco2 is self-sufficient**: it keeps `sumdata::POTSummary` and the
+  `recob::Wire`/`gaushit` collections the island test needs (confirmed on the test
+  output), so reco1 can be deleted once reco2 is verified. Verify by **POT
+  conservation**, not file count — a dropped subrun gives a full-looking directory with
+  a quietly wrong normalisation.
+- **Cost per file**: 4 min wall for a 4-event file, most of it fixed cost (container
+  start, service construction, Pandora geometry). The marginal per-event cost is much
+  lower and is being measured on the 36-event test files; do not extrapolate from the
+  small-file number.
+
+## Old analysis — OutputTree / TMVA (archived)
+
+The original selection on `HyperonProduction`/`OutputTree` ntuples with the TMVA BDT.
+Self-contained in `archive/`; all inputs/outputs resolve relative to that directory.
+
+```bash
+bash archive/runSigma.sh           # selection -> archive/SigmaHists.root (+ cut-flow)
+bash archive/runSigma.sh --plot    # also plots -> archive/figs/
+```
+
+BDT bootstrap (the trained weights were removed; regenerate if needed):
+
+```bash
+bash archive/runSigma.sh                 # 1st pass -> archive/TMVA_input.root
+root -b -l -q archive/RunTMVA.C          # train    -> archive/SigmaDataset/weights/
+bash archive/runSigma.sh                 # 2nd pass -> activates the BDTg cut
+```
