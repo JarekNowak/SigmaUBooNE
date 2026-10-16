@@ -1,8 +1,8 @@
 // ============================================================================
 //  PlotSigma.C  —  standalone plotting for the Sigma analysis.
 //
-//  Reads SigmaHists.root (produced by Sigma.C) and, for every variable at
-//  every cut stage, writes two PNGs:
+//  Reads SigmaHists.root (produced by SigmaSelection.C) and, for every variable
+//  at every cut stage, writes two PNGs:
 //
 //    figs/stack/<Cut>/<Var>.png   POT-scaled stacked MC (Dirt+Background+Hyperons)
 //                                 with the signal (Sigma) scaled x N and overlaid.
@@ -10,7 +10,7 @@
 //
 //  Run:  root -b -l -q PlotSigma.C+      (or  bash runPlots.sh)
 // ============================================================================
-#include "SigmaConfig.h"
+#include "SigmaSelConfig.h"
 
 #include <TFile.h>
 #include <TH1F.h>
@@ -87,7 +87,7 @@ static void MakeStackPlot(TFile *f, int v, int c, TCanvas *cv)
 
   THStack *st = new THStack(Form("st_%d_%d", v, c),
                             VarName[v] + "  -  " + CutName[c] + ";" + VarName[v] +
-                            ";Events (4.9e20 POT)");
+                            ";Events (1.1526e21 POT)");   // full RHC, matches SigmaSelection.C dataPOT
   st->Add(hdirt);   // smallest typically at bottom
   st->Add(hbkg);
   st->Add(hhyp);

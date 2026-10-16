@@ -48,6 +48,31 @@ static const char* CUT_REQ[NC_REQ]={"AllEvents","SliceID","FiducialV","CosmicVet
                                     "MuonCandidate","ProtonCandidate","PionCandidate","NTracksCut"};
 static const int NC=9;   // array size; only the first NCuse rows are filled/printed
 
+//  Old -> current NuMI flux weights for the NuWro signal, keyed on (run,subrun,event).
+//  NuWro was generated on the old (bugged) NuMI flux while the overlay background and
+//  the data are on the current g4 10.4 flux, so NuWro yields must be weighted down
+//  (<w> = 0.677, and the same for Sigma0 events despite their higher energy). Table:
+//  ~/MicroBooNE/production/nuwro_prod/flux_rw/nuwro_rhc_run3b_reco2_fluxweights.tsv.
+//  Applied to the SIGNAL pass only -- the NuWro and overlay samples are built from the
+//  same run3b EXT stream, so (run,subrun,event) is not unique across the two.
+static inline unsigned long long rseKey(unsigned r, unsigned s, unsigned e){
+  return ((unsigned long long)r*100000ULL + s)*10000000ULL + e;
+}
+static std::map<unsigned long long,double> loadFluxWeights(const char* p){
+  std::map<unsigned long long,double> m;
+  if(!p || !*p) return m;
+  std::ifstream in(p);
+  if(!in){ printf("  WARNING: flux weight file %s not readable -- NuWro left on the OLD flux\n",p); return m; }
+  std::string l;
+  while(std::getline(in,l)){
+    if(l.empty() || l[0]=='#') continue;
+    unsigned r,su,e; double w;
+    if(sscanf(l.c_str(),"%u %u %u %lf",&r,&su,&e,&w)==4) m[rseKey(r,su,e)]=w;
+  }
+  printf("  flux weights: %zu events from %s\n",m.size(),p);
+  return m;
+}
+
 static std::vector<std::string> loadList(const char* p){
   std::ifstream in(p); std::string l; std::vector<std::string> v;
   while(std::getline(in,l)) if(l.size()) v.push_back(l);
@@ -62,11 +87,16 @@ static std::vector<std::string> loadList(const char* p){
 //  lists/bkg_overlay.list, giving 14,024 files and 6.9701e21. The old list is kept
 //  as lists/bkg_overlay_run3.list -- pass it with bkgPOT=2.7795e21 to reproduce
 //  earlier numbers. Re-measure both after the residue pass adds its files.
+//  fluxWeights: pass the NuWro table (see above) when sigList is lists/sig_nuwro.list.
+//  Leave it empty for the GENIE signal, which is already on the current flux.
 void HypCutFlow(const char* sigList="lists/sig_genie.list",
                 const char* bkgList="lists/bkg_overlay.list",
                 double sigPOT=5.9770e22, double bkgPOT=6.9701e21,
-                bool requireProtonPion=false)
+                bool requireProtonPion=false,
+                const char* fluxWeights="")
 {
+  const std::map<unsigned long long,double> FW = loadFluxWeights(fluxWeights);
+  double sumW=0; long nW=0, nWmiss=0;
   const int NCuse = requireProtonPion ? NC_REQ : NC_OPT;
   const char** CUT = requireProtonPion ? CUT_REQ : CUT_OPT;
   long nPair=0;   // events at the final stage that DO have a p/pi pair
@@ -117,7 +147,12 @@ void HypCutFlow(const char* sigList="lists/sig_genie.list",
       ch.GetEntry(ie); H.convert();
       const bool isSig=(H.h_hyperon_pdg==3212 && H.nu_pdg==-14 && H.ccnc==0);
       if(wantSignal != isSig) continue;          // same split as DumpBDTHyp.C
-      auto tick=[&](int c){ raw[pass][c]+=1.0; wgt[pass][c]+=scale[pass]; };
+      double fw=1.0;
+      if(wantSignal && !FW.empty()){
+        auto it=FW.find(rseKey(H.h_run,H.h_subrun,H.h_event));
+        if(it!=FW.end()){ fw=it->second; sumW+=fw; ++nW; } else ++nWmiss;
+      }
+      auto tick=[&](int c){ raw[pass][c]+=1.0; wgt[pass][c]+=scale[pass]*fw; };
 
       tick(0);
       if(hasSliceBranch && fmSliceID<0) continue;                   tick(1);
@@ -175,6 +210,9 @@ void HypCutFlow(const char* sigList="lists/sig_genie.list",
     }
   }
 
+  if(!FW.empty())
+    printf("\n  flux reweight applied to %ld signal events, <w> = %.4f  (%ld not in the table -> 1)\n",
+           nW, nW? sumW/nW : 1.0, nWmiss);
   printf("\n  =============== POT-weighted cut flow (scaled to %.4e POT) ===============\n",DATAPOT);
   printf("  %-16s %9s %9s %11s %9s %9s %11s\n",
          "Cut","RawSig","RawBkg","S","B","Eff[%]","Pur[%]");

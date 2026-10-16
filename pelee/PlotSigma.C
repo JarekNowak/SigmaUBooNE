@@ -87,7 +87,7 @@ static void MakeStackPlot(TFile *f, int v, int c, TCanvas *cv)
 
   THStack *st = new THStack(Form("st_%d_%d", v, c),
                             VarName[v] + "  -  " + CutName[c] + ";" + VarName[v] +
-                            ";Events (4.9e20 POT)");
+                            ";Events (1.1526e21 POT)");   // full RHC, matches SigmaSelection.C dataPOT
   st->Add(hdirt);   // smallest typically at bottom
   st->Add(hbkg);
   st->Add(hhyp);

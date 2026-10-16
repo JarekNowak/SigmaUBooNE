@@ -20,7 +20,7 @@
 #include <algorithm>
 
 void artefact_audit(){
-  const char* HY="/data/uboone/prod_hyperon_sigmazero_reco1_prodnuwro_mcc9/pelee/Hyperons_Nuwro_WithCR_pelee_2982.root";
+  const char* HY="/data/uboone/prod_nuwro_sigmazero_overlay_numi_rhc_run3b_extunbiased_mcc9/ana/Hyperons_Nuwro_run3b_WithCR_pelee_2500.root";
   const char* OV="/data/uboone/new_numi_flux/Run1_rhc_new_numi_flux_rhc_pandora_ntuple.root";
 
   // Every ntuple branch the selection reads that feeds a BDT input, with the range to

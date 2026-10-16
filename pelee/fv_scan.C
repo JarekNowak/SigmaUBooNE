@@ -11,7 +11,7 @@
 // isolation rather than folded through later cuts.
 #include <vector>
 void fv_scan(){
-  const char* SIG="/data/uboone/prod_hyperon_sigmazero_reco1_prodnuwro_mcc9/pelee/Hyperons_Nuwro_WithCR_pelee_2982.root";
+  const char* SIG="/data/uboone/prod_nuwro_sigmazero_overlay_numi_rhc_run3b_extunbiased_mcc9/ana/Hyperons_Nuwro_run3b_WithCR_pelee_2500.root";
   // one RHC overlay run stands in for the background shape; absolute normalisation
   // cancels in the figure of merit ratio used below
   const char* BKG="/data/uboone/new_numi_flux/Run1_rhc_new_numi_flux_rhc_pandora_ntuple.root";

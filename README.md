@@ -339,14 +339,19 @@ Every $S$ and $B$ in this repo is the expected count in the full RHC dataset,
 | GENIE hyperon signal, `sig_genie.list` (4851 files) | hypana | 5.9770e22 | 1.9284e-2 |
 | RHC overlay background, `bkg_overlay.list` (14,024 files) | hypana | 6.9701e21 | 1.6536e-1 |
 | &nbsp;&nbsp;— Run 3 slice only, `bkg_overlay_run3.list` (3491 files) | hypana | 2.7795e21 | 4.1468e-1 |
-| NuWro Σ⁰ signal, `sig_nuwro.list` (2981 files) | hypana | 3.4141e23 | 3.3760e-3 |
-| NuWro Σ⁰ signal | PeLEE | 3.41647e23 | 3.374e-3 |
+| NuWro Σ⁰ signal, `sig_nuwro.list` (2500 files) | hypana | 1.3394e24 | 8.6053e-4 |
+| NuWro Σ⁰ signal, `Hyperons_Nuwro_run3b_WithCR_pelee_2500.root` | PeLEE | 1.3394e24 | 8.6053e-4 |
+| &nbsp;&nbsp;— superseded Run 1-EXT sample, `sig_nuwro_run1ext.list` (2981 files) | hypana | 3.4141e23 | 3.3760e-3 |
 | RHC overlay (Run 1+2+4a+4b+4c) | PeLEE | 9.94482e21 | 1.159e-1 |
 | Run 1 dirt | PeLEE | 4.21274e20 | 2.736 |
 
+**The NuWro scale also carries a flux weight of 0.677** on top of the POT scale: see
+"NuWro is on the old NuMI flux" below. The table lists the POT scale alone.
+
 **Never extrapolate POT from a file subset.** An early NuWro scale was taken from the
-first 300 files and was 52% high; POT/file is not uniform across a list. `PotSum.C`
-over the full list gives 3.4141e23, agreeing with the PeLEE `SubRun` sum to 0.07%.
+first 300 files and was 52% high; POT/file is not uniform across a list. For the run3b
+sample the hypana `ana/MetaTree` sum (1.3394e24 over 2500 files) and the PeLEE `SubRun`
+sum over the merged ntuple (1.33940e24, 249832 entries) agree to 4 digits.
 
 The hypana overlay used to be only the **Run 3** slice (2.78e21 of the 9.94e21 the
 PeLEE chain uses), which is why its per-event weight was 0.41 and why nothing below
@@ -358,10 +363,157 @@ size. POT/event agrees between the two (3.825e15 new vs 3.829e15 existing), so t
 combine without a relative normalisation. Paths:
 `/data/uboone/SigmaFiles/prod_numi_extunbiased_nu_overlay_g4.10.4_flux_run3_rhc_pandora_reco2_reco2/hypana/`.
 
+### The NuWro signal sample (run3b, 2026-10-15)
+
+The Run 1-EXT `prod_hyperon_sigmazero_reco1_prodnuwro_mcc9` sample is **retired**. Its
+replacement is generated and overlaid locally by `~/MicroBooNE/production/nuwro_prod/`:
+2500 jobs × 100 NuWro Σ⁰ events on swizzled NuMI **run3b ext_unbiased** data, full
+gen→reco2 chain, then hypana + PeLEE ntuples in
+`/data/uboone/prod_nuwro_sigmazero_overlay_numi_rhc_run3b_extunbiased_mcc9/ana/`.
+All 2500 jobs completed (249,832 events, 168 dropped by the reco2 watchdog), and
+`check_ext_unique.py --outputs` confirms 250,000 distinct EXT events with none reused.
+
+| | old (Run 1 EXT) | new (run3b EXT) |
+|---|---|---|
+| files / events | 2981 / 64,716 | 2500 / 249,832 |
+| generated POT | 3.4141e23 | 1.3394e24 |
+| true Σ⁰ CC ν̄μ | 17,714 (27.4%) | 57,841–58,545 (23.5%) |
+| hypana efficiency at `NTracksCut` | 20.01% | 20.43% |
+| raw signal surviving | 3,545 | 11,958 |
+
+The cosmics now come from the same run period as the overlay background, and the
+selection behaves the same on them (efficiency moves 0.4 points, candidate purity
+improves slightly), so the gain is 3.4× the surviving MC statistics.
+
+**NuWro is on the old NuMI flux.** NuWro's flux files were converted from the old
+(bugged-geometry) gsimple flux, while the GENIE overlay, the dirt and the data use the
+current g4 10.4 flux. Every NuWro event therefore carries the official MicroBooNE
+"New/Old" ratio weight in (E_ν, angle to the beam axis). Measured over the finished
+production the mean weight is **0.6774**, and — the question worth asking, since hyperon
+events sit higher in energy — it is **0.6770 for the Σ⁰ CC signal subset** (⟨E⟩ 1.67 GeV
+against 1.54 GeV for the rest), so the correction is flat to 0.1%. The spread is wider
+for signal (rms 0.297 vs 0.226), costing a little effective statistics: 49.9k of 58.5k.
+`SigmaSelection.C` computes the weight on the fly from `nu_e`/`true_nu_p*`;
+`HypCutFlow.C` takes the per-event table as its `fluxWeights` argument
+(`nuwro_prod/flux_rw/nuwro_rhc_run3b_reco2_fluxweights.tsv`). Details and the FHC
+numbers: `nuwro_prod/flux_rw/README.md`.
+
+### What the new sample does to the selection
+
+Both chains were run twice, with the same code and the same background, changing only
+the signal sample (and then the BDT). The selection itself is unaffected by the move to
+run3b cosmics; what changes is statistics and normalisation.
+
+PeLEE chain, scaled to 1.1526e21 POT:
+
+| | old sample, old BDT | new sample, old BDT | new sample, **retrained** |
+|---|---|---|---|
+| raw signal at `AllEvents` | 6,446 | 21,521 | 21,521 |
+| efficiency at `NTracksCut` | 50.05% | 50.79% | 50.79% |
+| BDT training tree `TreeS` | 3,226 | 10,931 | 10,931 |
+| BDTG cut | +0.562 | +0.502 | **+0.616** |
+| S | 4.200 | 2.639 | 2.850 |
+| B | 777.9 | 967.1 | **749.9** |
+| purity | 0.537% | 0.272% | 0.379% |
+| signal eff of preselection | 38.6% | 41.4% | **44.7%** |
+| S/√(S+B) | 0.1502 | 0.0847 | 0.1039 |
+
+S is 1.7x smaller than it was purely through normalisation — 0.677 (flux weight) x 0.864
+(this production's lower Σ⁰ fraction) — so comparing the first column with the third
+measures the sample's normalisation, not its selection. The middle column is the right
+baseline for the retraining, and against it the retrained BDT keeps MORE signal with LESS
+background: +23% in S/√(S+B), purity +39%.
+
+**The retraining confirms that this chain was signal-statistics-limited.** Scores are
+cross-validated throughout (even→foldB, odd→foldA), so this is out-of-sample:
+
+| | AUC | B/B₀ at 50% signal eff | at 40% | at 20% |
+|---|---|---|---|---|
+| old sample, old weights | 0.8429 | 0.0681 | 0.0414 | 0.0125 |
+| new sample, old weights | 0.8333 | 0.0688 | 0.0432 | 0.0132 |
+| new sample, retrained | **0.8656** | **0.0467** | **0.0293** | **0.0084** |
+
+At matched signal efficiency the retrained BDT rejects ~32% more background. The gain
+folds together 3.4x the training signal and training on cosmics from the matching run
+period; separating the two needs a third training on a 3,226-event subsample, which has
+not been run. Weights before the retraining are kept in `pelee/pelee_bdt_prerun3b_backup/`.
+
+hypana chain (`HypCutFlow.C`, signal pass only), with the flux weight applied to all
+58,545 signal events at ⟨w⟩ = 0.6770: S = 34.105 at `AllEvents` → **6.970** at
+`NTracksCut`, efficiency 20.44%, against 11.968 → 20.01% for the retired sample, on
+3.4x the raw survivors (11,958 against 3,545). Candidate purity improves slightly
+(muon 95.2→96.0%, proton 66.6→67.2%, pion 43.1→43.5%, photon 73.1→75.1%).
+
+### The three signal samples disagree on the absolute Σ⁰ rate
+
+Measured with one truth definition (`mc_hyperon_pdg==3212 && mc_nu_pdg==-14 && CC`) and
+one fiducial volume, Σ⁰ events per 1.1526e21 POT with the true vertex in the FV:
+
+| sample | in-FV Σ⁰ per full-RHC POT | vs the plain overlay |
+|---|---|---|
+| plain RHC overlay, `bkg_overlay.list` (unfiltered, trustworthy POT) | 83.3 | 1.00 |
+| GENIE hyperon sample, `sig_genie.list` | 110.1 | 1.32 |
+| NuWro run3b, POT scale only | 18.9 | 0.23 |
+| NuWro run3b, with the 0.677 flux weight | 12.8 | **0.15** |
+
+The fiducial fractions are the same in all three (37–38%), so this is not a generation-
+volume artefact, and it is not new — the retired sample gives 22 before the flux weight.
+
+**Most of the NuWro gap is hyperon FSI, not normalisation.** The generator configuration
+(`nuwro_old/configsets/ultrapure-sigma0-numi-rhc.txt`) sets `dyn_hyp_cc=1` with every
+other channel off and, within it, `hyp_lambda=0`, `hyp_sigma_zero=1`, `hyp_sigma_minus=0`:
+NuWro generated the **Σ⁰ channel and nothing else**, so its quoted POT/event is the
+exposure per Σ⁰ *produced*, which is exactly the normalisation a Σ⁰ signal sample wants.
+Everything else in the sample is FSI: of the ν̄μ CC events only 25.3% still carry a Σ⁰,
+27.9% carry a Λ (Σ⁰N → ΛN in the cascade), 10% a Σ±, and 37.3% no strange particle at all.
+The MicroBooNE Λ paper (arXiv:2212.07888) states the other half of this outright — "the
+NuWro predictions include the effect of final state interactions, while GENIE does not
+take them into account". GENIE's hyperons leave the nucleus untouched, so for GENIE
+produced = surviving, and the comparison that matters is Σ⁰ **produced**:
+
+| | in-FV Σ⁰ produced per full-RHC POT |
+|---|---|
+| GENIE overlay (no hyperon FSI, so = surviving) | 83.3 |
+| NuWro, POT scale only | 79.1 |
+| NuWro, with the 0.677 flux weight | 53.6 |
+
+That is agreement to 0.95x before the flux weight and 0.64x after — the ordinary
+generator spread, not a factor of six. The same FSI explains the sign flip between
+channels: in Fig. 2 of the Λ paper NuWro sits **above** GENIE (≈2.1 against ≈1.5
+×10⁻⁴⁰ cm²/Ar), because FSI *adds* Λ, while for Σ⁰ it is far below, because FSI *removes*
+Σ⁰. Both follow from the one modelling difference.
+
+**A NuWro control run closes the normalisation question.** The same flux, target and
+config with `dyn_hyp_cc=0 dyn_qel_cc=1` — ordinary CC quasi-elastic instead of the hyperon
+channel — gives 7.539e15 POT per event over the box. The overlay's own CC QEL rate, 20,277
+events with the true vertex in the FV in 7.1479e20 POT, converts to 8.835e15 on the same
+footing (37.0% box-mass FV fraction, 0.677 old-flux factor). **NuWro's generic event rate
+is therefore within 17% of GENIE's**, which is the ordinary CCQE model difference, so its
+flux × target normalisation is sound and the hyperon numbers can be taken at face value.
+Referenced to each generator's own CCQE rate, NuWro's Σ⁰ *production* is 0.81× GENIE's.
+
+The 6.5× gap in *surviving* Σ⁰ then decomposes exactly:
+
+| factor | size |
+|---|---|
+| hyperon FSI — NuWro keeps 23.9% of the Σ⁰ it produces, GENIE keeps all | **4.19×** |
+| old → current NuMI flux weight | 1.48× |
+| residual production-rate difference | 1.05× |
+| product | 6.51× (measured 6.51×) |
+
+**What is still open** is the residual ~1.3–1.6x between the GENIE hyperon sample, the
+GENIE overlay and the Λ paper's own GENIE prediction — the 1.61x of the Λ cross-check.
+Practical consequence: a Σ⁰ yield quoted from the NuWro sample is a yield *with* hyperon
+FSI and one from the GENIE samples is a yield *without* it, and the difference between
+them is a model choice of roughly a factor of four, not a bug to be fixed. The measured
+Λ cross section, 2.0 +2.2/−1.7 ×10⁻⁴⁰ cm²/Ar, brackets both generators and cannot
+currently distinguish them.
+
 ### Sample bookkeeping notes
 
-- The **NuWro sample is Σ⁰-filtered** (Σ⁰ 28.9%, Λ 28.5%) where the GENIE sample is
-  Λ-dominated (Λ 51.0%, Σ⁰ 7.2%). It can validate Σ yields but never a Λ rate.
+- The **NuWro sample is Σ⁰-filtered** (Σ⁰ 24.9%, Λ 27.9% at the hyperon level, and 37.3%
+  of events lose the hyperon to FSI) where the GENIE sample is Λ-dominated (Λ 50.6%,
+  Σ⁰ 7.4%). It can validate Σ yields but never a Λ rate.
 - hypana and PeLEE disagree on raw signal count (17714 vs 6446) only because PeLEE
   quotes true-Σ⁰-in-FV as its efficiency denominator. At the slice stage they agree
   event-for-event (9426 vs 9427).

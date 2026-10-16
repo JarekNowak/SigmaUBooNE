@@ -23,7 +23,15 @@ namespace SigmaFV {
     if (x < Xmin || x > Xmax) return false;
     if (y < Ymin || y > Ymax) return false;
     if (z < Zmin || z > Zmax) return false;
+    // Dead-region veto, switchable so its cost can be measured. Removing it gains
+    // 5% in figure of merit at the FV stage purely by adding ~10% more events at
+    // unchanged purity (S and B both rise ~10%, and S/sqrt(S+B) scales as sqrt).
+    // Whether that survives the full selection depends on whether events
+    // reconstructed in a dead region yield usable candidates, which the FV-stage
+    // figure of merit cannot see.
+#ifndef SIGMA_NO_DEADREGION_VETO
     if (z > DeadZmin && z < DeadZmax) return false;  // dead region
+#endif
     return true;
   }
 

@@ -20,6 +20,7 @@
 #include "TFile.h"
 #include "TTree.h"
 #include "TH1D.h"
+#include "TH2D.h"
 #include "TDirectory.h"
 #include "TVector3.h"
 #include "TString.h"
@@ -30,11 +31,14 @@
 #include <vector>
 #include <string>
 #include <cmath>
+#include <map>
+#include <utility>
 
 R__LOAD_LIBRARY(libTMVA)
 
 #include "SigmaSelConfig.h"
 #include "SigmaFV.h"
+#include "PidAssign.h"
 
 using namespace SigmaCfg;
 
@@ -46,10 +50,28 @@ static const double MUON_LLR       = 0.7;    // LLR PID
 static const int    NSHOWERS_MAX   = 4;      // require 0 < nshowers < 4
 static const int    NTRACKS_MAX    = 5;      // require ntracks < 5
 static const double TRK_SHR_SPLIT  = 0.5;    // trk_score_v > 0.5 -> track, else shower
+// Truth muon-momentum threshold for the signal definition. 0.15 GeV/c matches the
+// NuMI CC1mu1pi analysis; it costs 4.2% of the Sigma0 signal.
+static const double MUON_MOM_MIN_TRUE = 0.15;   // GeV/c
 
 // ─── Added discriminants (optimization pass) ─────────────────────────────────
 static const double TOPO_MIN       = 0.20;   // topological_score cosmic/ν veto
-static const double BDT_MIN        = -0.90;  // BDTG cut (2-fold CV, full RHC bkg): ~522 sig (≥ cut-based), +20% FoM
+// BDTG operating point: the out-of-sample FoM peak, located by ScanPeleeBDT.C on
+// BDTInput.root (scores are cross-validated, even->foldB / odd->foldA).
+// Retrained 2026-10-15 on the run3b NuWro signal (TreeS 3226 -> 10931):
+//   preselection      S= 6.370  B=20613.9  pur=0.031%  FoM=0.0444
+//   old point -0.90   S= 6.324  B=16376.0  pur=0.039%  FoM=0.0494
+//   peak     +0.616   S= 2.850  B=  749.9  pur=0.379%  FoM=0.1039   <- this
+// The previous weights on this same sample peaked at +0.502 with S=2.639, B=967.1,
+// FoM=0.0847, so the retraining buys +23% FoM: at matched signal efficiency it
+// rejects ~32% more background (AUC 0.8333 -> 0.8656), and at the peak it keeps
+// MORE signal (44.7% of preselection against 41.4%) with LESS background.
+// S is lower than the 4.200 the retired Run 1-EXT sample gave purely through
+// normalisation (x0.677 NuMI flux weight, x0.864 lower Sigma0 rate), not selection.
+// CAUTION: at the peak a 2% systematic on the background is +-15.0 events against
+// 2.9 signal, so the systematic budget -- not S/sqrt(S+B) -- should ultimately set
+// this. Rescan after any change to the training or the preselection.
+static const double BDT_MIN        = 0.616;
 static const double M_PROTON       = 0.938272;  // Λ/Σ⁰ mass reconstruction
 static const double M_PION         = 0.139570;
 // Combined proton/pion discriminant D = LLR/σ_LLR + (χ²_p−χ²_π)/σ_Δχ² (high=pion);
@@ -62,7 +84,68 @@ static inline double safeWeight(double w) {
   return (std::isfinite(w) && w >= 0.0 && w <= 30.0) ? w : 1.0;
 }
 
-void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = true)
+// ─── Old → current NuMI flux reweighting (NuWro samples only) ────────────────
+//  NuWro's flux files were converted from the OLD NuMI gsimple flux (g4numi v6,
+//  the bugged beamline geometry); the GENIE overlay, the dirt and the data all
+//  use the CURRENT flux (numi_dk2nu_g4_10_4). Every NuWro event therefore has to
+//  be weighted by the official MicroBooNE ratio map "New Flux / Old (bugged)
+//  Flux", binned in (E_nu [GeV], angle [deg] to the NuMI beam axis). Without it
+//  the NuWro yields are too high: <w> = 0.677 over the whole sample.
+//  Beam axis = 3rd column of the GENIE microboone-numi-v2 rotation.
+//  Source and cross-checks: ~/MicroBooNE/production/nuwro_prod/flux_rw/.
+static const char* FLUXRW_MAP =
+  "/cvmfs/uboone.osgstorage.org/stash/uboonebeam/numi_oldg4rw_ratiohists/prod_ratios/"
+  "ratios_g4_10_4_cvonly_fornuwrofakedata.root";
+
+struct FluxRW {
+  std::map<int, TH2D*> h;
+  bool ok = false;
+  long nUsed = 0, nEmpty = 0;
+  void load(const char* horn = "rhc") {
+    TFile* f = TFile::Open(FLUXRW_MAP, "READ");
+    if (!f || f->IsZombie()) {
+      std::cout << "  WARNING: flux ratio map not readable -> NuWro stays on the OLD flux\n";
+      if (f) delete f;
+      return;
+    }
+    const std::pair<int, const char*> m[4] =
+      { {14,"numu"}, {-14,"numubar"}, {12,"nue"}, {-12,"nuebar"} };
+    for (const auto& p : m) {
+      TH2D* t = (TH2D*)f->Get(Form("ratio_cv_%s_enu_angle_%s", horn, p.second));
+      if (t) { t->SetDirectory(nullptr); h[p.first] = t; }
+    }
+    f->Close(); delete f;
+    ok = !h.empty();
+    if (ok) std::cout << "  NuMI flux reweight map loaded (" << h.size()
+                      << " species, horn " << horn << ")\n";
+  }
+  //  Empty map bins (and anything outside it) fall back to 1, as in
+  //  flux_rw/hepmc_flux_weights.C; that is 0.2% of events.
+  double w(int pdg, double E, double px, double py, double pz) {
+    if (!ok) return 1.0;
+    auto it = h.find(pdg);
+    if (it == h.end()) return 1.0;
+    TVector3 p(px, py, pz);
+    if (p.Mag() <= 0.0) return 1.0;
+    const double ang = p.Angle(TVector3(0.38880857519374290,
+                                        -0.0584279894529063024,
+                                        0.91946400794392302)) * 180.0 / TMath::Pi();
+    const double v = it->second->GetBinContent(it->second->FindBin(E, ang));
+    ++nUsed;
+    if (v <= 0.0) { ++nEmpty; return 1.0; }
+    return v;
+  }
+};
+
+//  requireProtonPion=false (default) drops the ProtonCandidate/PionCandidate
+//  REQUIREMENTS. Measured on this chain they remove more signal than background
+//  (-31.6%/-18.3% and -52.9%/-43.5%) and more than halve the figure of merit
+//  (0.0730 -> 0.0346), because roughly half the signal has no reconstructed pion.
+//  Candidates are still formed when the tracks exist; when they do not the event
+//  is kept, pair-dependent BDT inputs carry sentinels and HasPair flags it. The
+//  two cut-flow rows then repeat the MuonCandidate row by construction.
+void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = true,
+                    bool requirePion = true, bool requireProtonPion = false)
 {
   // ── Samples ────────────────────────────────────────────────────────────────
   //  Per-file descriptor.  The signal file feeds two samples (0=Sigma signal,
@@ -74,34 +157,46 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     int   sample;        // fixed sample index, or -1 when split by truth signal
     bool  truthFV;       // also require true_nu_vtx in FV (signal/hyperon MC)
     bool  isData;        // reset ppfx/weightTune/weightSpline to 1
+    bool  fluxRW;        // NuWro: weight onto the current NuMI flux (see FluxRW)
   };
 
+  //  Signal: the run3b NuWro Sigma0 production (2500 overlay jobs on swizzled
+  //  NuMI run3b ext_unbiased data, ~/MicroBooNE/production/nuwro_prod/). It
+  //  replaced the Run 1-EXT prodnuwro sample on 2026-10-15: 3.3x the raw Sigma0
+  //  statistics and cosmics from the same run period as the overlay background.
+  //  The hypana form of the same files is lists/sig_nuwro.list.
   const std::string SIG =
-    "/data/uboone/prod_hyperon_sigmazero_reco1_prodnuwro_mcc9/pelee/Hyperons_Nuwro_WithCR_pelee_2982.root";
+    "/data/uboone/prod_nuwro_sigmazero_overlay_numi_rhc_run3b_extunbiased_mcc9/ana/Hyperons_Nuwro_run3b_WithCR_pelee_2500.root";
 
   const std::string NUMI = "/data/uboone/new_numi_flux/";
   std::vector<FileDesc> files = {
-    { SIG,                                                                  -1, true,  false }, // 0/1 signal + hyperons
+    { SIG,                                                            -1, true,  false, true }, // 0/1 signal + hyperons
     // 2 background — ALL RHC overlay runs (Run1+2+4a+4b+4c), summed POT below
-    { NUMI + "Run1_rhc_new_numi_flux_rhc_pandora_ntuple.root",               2, false, false },
-    { NUMI + "Run2_rhc_new_numi_flux_rhc_pandora_ntuple.root",               2, false, false },
-    { NUMI + "Run4a_rhc_new_numi_flux_rhc_pandora_ntuple.root",              2, false, false },
-    { NUMI + "Run4b_rhc_new_numi_flux_rhc_pandora_ntuple.root",              2, false, false },
-    { NUMI + "Run4c_rhc_new_numi_flux_rhc_pandora_ntuple.root",              2, false, false },
-    { "/data/uboone/dirt/neutrinoselection_filt_run1_dirt_overlay.root",     3, false, false }, // 3 dirt
+    { NUMI + "Run1_rhc_new_numi_flux_rhc_pandora_ntuple.root",         2, false, false, false },
+    { NUMI + "Run2_rhc_new_numi_flux_rhc_pandora_ntuple.root",         2, false, false, false },
+    { NUMI + "Run4a_rhc_new_numi_flux_rhc_pandora_ntuple.root",        2, false, false, false },
+    { NUMI + "Run4b_rhc_new_numi_flux_rhc_pandora_ntuple.root",        2, false, false, false },
+    { NUMI + "Run4c_rhc_new_numi_flux_rhc_pandora_ntuple.root",        2, false, false, false },
+    { "/data/uboone/dirt/neutrinoselection_filt_run1_dirt_overlay.root", 3, false, false, false }, // 3 dirt
     // ── Fake-data slot ───────────────────────────────────────────────────────
     //  NuWro hyperon sample reused as the "data" sample (reco cuts only).  A
     //  true generator-closure test needs a DIFFERENT-generator (genie) hyperon
     //  PeLEE ntuple, which does not yet exist locally — swap this one line when
     //  it does, and flip isData=true for real beam-on data.
-    { SIG,                                                                   4, false, false }, // 4 fake data
+    { SIG,                                                             4, false, false, true }, // 4 fake data
   };
 
   // ── POT / normalization (editable block) ─────────────────────────────────────
   //  Default exposure: FULL RHC data POT (Run1+2+4), all samples scaled to it.
-  //    signal NuWro generated POT : 3.41647e23 (sum of nuselection/SubRun "pot";
-  //      Hyperons_Nuwro_WithCR_pelee_2982.root, 64760 entries, 17721 anti-numu CC
-  //      Sigma0 -- supersedes the 1994-file sample, 2.1764e23 / 41244 / 11316)
+  //    signal NuWro generated POT : 1.3394e24 (sum of nuselection/SubRun
+  //      "pot"; Hyperons_Nuwro_run3b_WithCR_pelee_2500.root, 249832 entries,
+  //      57841 anti-numu CC Sigma0. Supersedes the Run 1-EXT sample
+  //      Hyperons_Nuwro_WithCR_pelee_2982.root, 3.41647e23 / 64760 / 17721, and
+  //      before that the NoCR 1994-file sample, 2.1764e23 / 41244 / 11316.)
+  //      CAUTION: scaled by this POT the sample predicts 4.3x FEWER Sigma0 CC
+  //      events than the plain RHC overlay contains at its own POT (50.4 against
+  //      216.8 per 1.1526e21, same truth definition, same fiducial fractions),
+  //      and 5.8x fewer than lists/sig_genie.list. See README "Sample bookkeeping".
   //    RHC overlay POT (Run1+2+4a+4b+4c) : 9.94482e21  (/data/uboone/pot.txt RunAll_rhc:
   //      8.99715e20+5.78652e21+7.28265e20+2.37975e21+1.50509e20)
   //    RHC Run1 dirt POT          : 4.21274e20 (/data/uboone/dirt/pot.txt)
@@ -110,7 +205,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   //  error is no longer Run1-sized.  NOTE: dirt is still Run1-RHC only (scaled up);
   //  add Run3b/Run4 dirt to fix that too.
   const double dataPOT   = 1.1526e21;
-  const double signalPOT = 3.41647e23;
+  const double signalPOT = 1.3394e24;
   const double bkgPOT    = 9.94482e21;   // sum of all 5 RHC overlay runs
   const double dirtPOT   = 4.21274e20;
 
@@ -188,18 +283,35 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     // and 0.774 for the slnunhits branch -- i.e. they carry the physics without
     // the production-chain artefact.
     "UnassocHitsCalc","UnassocFracCalc",
+    // Whether a proton/pion pair was formed at all. With requireProtonPion=false
+    // the pair is optional, every pair-dependent input above carries its sentinel
+    // when it is missing, and this flags those events for the BDT.
+    "HasPair",
     "Weight" };
-  const int NBV = sizeof(BDTV)/sizeof(BDTV[0]);   // 57
-  float bdtv[57];
+  const int NBV = sizeof(BDTV)/sizeof(BDTV[0]);   // 58
+  float bdtv[58];
   float bdtIsOdd = 0;   // event-number parity, spectator for 2-fold CV split
   //  Truth/diagnostic branches (not BDT inputs): let the surviving background be
   //  characterised by interaction type, candidate true identity, π0 content, and
   //  cosmic origin, with the CV BDT score so any threshold can be applied offline.
   float tScore=0, tSample=0, tNuPdg=0, tCcnc=0, tInter=0, tNuE=0, tHasPi0=0,
         tMuPdg=0, tPrPdg=0, tPiPdg=0, tShrPdg=0, tCosmic=0;
+  //  ── All-PFP block ─────────────────────────────────────────────────────────
+  //  Every reconstructed quantity for every particle in the event, rather than
+  //  the four hand-picked candidate roles. PFPs are ordered by collection-plane
+  //  hit count (descending) -- a stable, activity-based ordering that does not
+  //  presume which particle is which -- and slots beyond the event's multiplicity
+  //  carry the -1 sentinel. The preselection caps tracks at 4 and showers at 3,
+  //  so 8 slots hold every surviving event.
+  static const int NSLOT = 8, NPV = 15;
+  static const char* PFPV[NPV] = {"score","len","llr","chipr","chipi","dvtx","nhity",
+                                  "caloy","eproton","rmumom","dedxy","shrE","moliere",
+                                  "cosmu","costh"};
+  float pfpv[NSLOT][NPV];
+  float nPFPtot = 0;
   TFile* fbdt = nullptr; TTree* TreeS = nullptr; TTree* TreeB = nullptr;
   if (writeBDT) {
-    fbdt = new TFile("BDTInput.root", "RECREATE");
+    fbdt = new TFile(requirePion ? "BDTInput.root" : "BDTInput_nopion.root", "RECREATE");
     TreeS = new TTree("TreeS", "Sigma0 signal candidates");
     TreeB = new TTree("TreeB", "background candidates");
     for (auto T : {TreeS, TreeB}) {
@@ -211,6 +323,10 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
       T->Branch("HasPi0", &tHasPi0);    T->Branch("CosmicMu", &tCosmic);
       T->Branch("MuBktPdg", &tMuPdg);   T->Branch("ProtonBktPdg", &tPrPdg);
       T->Branch("PionBktPdg", &tPiPdg); T->Branch("Shr1BktPdg", &tShrPdg);
+      T->Branch("nPFPtot", &nPFPtot);
+      for (int k = 0; k < NSLOT; k++)
+        for (int j = 0; j < NPV; j++)
+          T->Branch(Form("p%d_%s", k, PFPV[j]), &pfpv[k][j]);
     }
     fout->cd();
   }
@@ -255,6 +371,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   Float_t pi0_energy1_Y, pi0_energy2_Y, pi0_gammadot;   // framework π0 di-photon reco
   Float_t reco_nu_vtx_sce_x, reco_nu_vtx_sce_y, reco_nu_vtx_sce_z;
   Float_t true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z;
+  Float_t true_nu_px = 0.f, true_nu_py = 0.f, true_nu_pz = 0.f;  // flux reweighting
   Float_t topological_score;
   // Second-Shower-Veto inputs, after the gLEE single-photon analysis: evidence that
   // a second photon EXISTS even where Pandora never reconstructed a shower from it.
@@ -266,6 +383,9 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   Float_t ppfx_cv, weightTune, weightSpline;
 
   std::vector<int>*   mc_pdg              = nullptr;
+  std::vector<float>* mc_px               = nullptr;   // truth momenta, for the
+  std::vector<float>* mc_py               = nullptr;   // muon threshold in the
+  std::vector<float>* mc_pz               = nullptr;   // signal definition
   std::vector<int>*   backtracked_pdg     = nullptr;
   std::vector<float>* backtracked_overlay_purity = nullptr;  // cosmic tag (genie overlay)
   std::vector<float>* trk_score_v         = nullptr;
@@ -296,6 +416,9 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   std::vector<unsigned int>* pfnhits      = nullptr;  // hits per PFP, for the
                                                       // recomputed unassociated count
 
+  //  Flux reweight map, loaded once; only files with fd.fluxRW use it.
+  FluxRW frw; frw.load("rhc");
+
   // ── File loop ───────────────────────────────────────────────────────────────
   for (size_t i_f = 0; i_f < files.size(); i_f++) {
     const FileDesc& fd = files[i_f];
@@ -311,10 +434,12 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     t->SetBranchStatus("*", 0);
     const std::vector<const char*> branches = {
       "run","sub","evt","nu_pdg","ccnc","interaction","nu_e","mc_pdg",
+      "mc_px","mc_py","mc_pz",
       "backtracked_pdg","backtracked_overlay_purity",
       "pi0_energy1_Y","pi0_energy2_Y","pi0_gammadot",
       "reco_nu_vtx_sce_x","reco_nu_vtx_sce_y","reco_nu_vtx_sce_z",
       "true_nu_vtx_x","true_nu_vtx_y","true_nu_vtx_z","topological_score",
+      "true_nu_px","true_nu_py","true_nu_pz",
       "ppfx_cv","weightTune","weightSpline",
       "trk_score_v","trk_len_v","trk_llr_pid_score_v",
       "trk_sce_start_x_v","trk_sce_start_y_v","trk_sce_start_z_v",
@@ -339,11 +464,17 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     t->SetBranchAddress("pi0_energy2_Y", &pi0_energy2_Y);
     t->SetBranchAddress("pi0_gammadot", &pi0_gammadot);
     t->SetBranchAddress("mc_pdg", &mc_pdg);
+    if (t->GetBranch("mc_px")) t->SetBranchAddress("mc_px", &mc_px);
+    if (t->GetBranch("mc_py")) t->SetBranchAddress("mc_py", &mc_py);
+    if (t->GetBranch("mc_pz")) t->SetBranchAddress("mc_pz", &mc_pz);
     t->SetBranchAddress("backtracked_pdg", &backtracked_pdg);
     t->SetBranchAddress("backtracked_overlay_purity", &backtracked_overlay_purity);
     t->SetBranchAddress("reco_nu_vtx_sce_x", &reco_nu_vtx_sce_x);
     t->SetBranchAddress("reco_nu_vtx_sce_y", &reco_nu_vtx_sce_y);
     t->SetBranchAddress("reco_nu_vtx_sce_z", &reco_nu_vtx_sce_z);
+    t->SetBranchAddress("true_nu_px", &true_nu_px);
+    t->SetBranchAddress("true_nu_py", &true_nu_py);
+    t->SetBranchAddress("true_nu_pz", &true_nu_pz);
     t->SetBranchAddress("true_nu_vtx_x", &true_nu_vtx_x);
     t->SetBranchAddress("true_nu_vtx_y", &true_nu_vtx_y);
     t->SetBranchAddress("true_nu_vtx_z", &true_nu_vtx_z);
@@ -412,18 +543,79 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
       if (ragged) { nSkippedRagged++; continue; }
 
       // ── CV weight (MC); reset for the data slot ──────────────────────────────
+      //  NuWro samples carry an extra factor putting them on the current NuMI
+      //  flux (fd.fluxRW); it is applied to the fake-data slot too, since that
+      //  slot stands in for data and data is on the current flux.
       double pf = ppfx_cv, wt = weightTune, ws = weightSpline;
       if (fd.isData) { pf = wt = ws = 1.0; }
-      const double w_cv = safeWeight(pf * wt * ws);
+      const double w_flux = fd.fluxRW
+        ? frw.w(nu_pdg, nu_e, true_nu_px, true_nu_py, true_nu_pz) : 1.0;
+      const double w_cv = safeWeight(pf * wt * ws) * w_flux;
 
       // ── Signal truth flag (Sigma0 in anti-nu_mu CC) ──────────────────────────
       //  Photons are NOT stored in mc_pdg, so the Sigma0->Lambda+gamma signature
       //  is identified by the Sigma0 itself (pdg 3212) in the final-state list.
       //  Decay-daughter momenta are unavailable in mc_pdg, so the old truth
       //  proton/pion momentum cuts cannot be ported.
+      //  SIGNAL DEFINITION
+      //
+      //  anti-nu_mu CC, a Sigma0 in the final state, the muon above threshold, and no
+      //  meson other than the Lambda decay products.
+      //
+      //  What can and cannot be required here is set by the truth record, which in
+      //  these PeLEE ntuples stops at the PRIMARY vertex: mc_pdg lists the Sigma0
+      //  itself (1.00 per event) and the muon (1.00), but NOT the Sigma0 -> Lambda
+      //  gamma -> p pi- gamma chain. Measured on the signal sample: nproton averages
+      //  0.06 and is zero in 94.4% of events, npion is zero in 100%, PDG 22 never
+      //  appears at all, and zero of 17721 events have a backtracked pi- PFP -- yet
+      //  every one of them contains a proton, a pi- and a photon from the decay.
+      //  Proton, pion and photon thresholds are therefore IMPOSSIBLE to impose from
+      //  this record, and the momentum cuts of the archived OutputTree analysis cannot
+      //  be ported. Doing so needs a truth record that follows the decay chain, which
+      //  is what the HyperonProduction analyzer provides.
       bool hasSigma0 = false;
-      if (mc_pdg) for (int p : *mc_pdg) if (p == 3212) { hasSigma0 = true; break; }
-      bool IsSignal = (nu_pdg == -14) && (ccnc == 0) && hasSigma0;
+      double pmu_true = -1.0;
+      bool hasOtherMeson = false;
+      if (mc_pdg) {
+        for (size_t k = 0; k < mc_pdg->size(); ++k) {
+          const int pd = mc_pdg->at(k), ap = std::abs(pd);
+          if (pd == 3212) hasSigma0 = true;
+          if (ap == 13 && mc_px && k < mc_px->size())
+            pmu_true = std::sqrt( mc_px->at(k)*mc_px->at(k)
+                                + mc_py->at(k)*mc_py->at(k)
+                                + mc_pz->at(k)*mc_pz->at(k) );
+          //  Any meson at the primary vertex. The Lambda decay pi- is not in this
+          //  list (see above), so this vetoes genuinely EXTRA mesons and does not
+          //  reject the signal's own decay products. pi0, eta, and the kaons.
+          if (ap == 111 || ap == 221 || ap == 331 ||
+              ap == 130 || ap == 310 || ap == 311 || ap == 321) hasOtherMeson = true;
+        }
+      }
+      //  Muon threshold. The muon IS in the record, mean momentum 1.005 GeV/c, and
+      //  only 4.2% of signal muons fall below 0.15 GeV/c -- the same threshold the
+      //  CC1mu1pi NuMI analysis uses, chosen there for reconstruction rather than
+      //  physics reasons and adopted here for consistency.
+      //  If mc_px is absent from a sample the momentum cannot be formed, and
+      //  pmu_true stays at its -1 sentinel. Requiring the threshold then would silently
+      //  reject EVERY event as non-signal, so fall back to not applying it and say so
+      //  once. Preferring a wrong-but-loud failure to a wrong-and-silent one.
+      static bool warnedNoMuP = false;
+      const bool haveMuP = ( pmu_true >= 0.0 );
+      if ( !haveMuP && !warnedNoMuP ) {
+        std::cout << "  WARNING: mc_px/py/pz unavailable -- the truth muon-momentum "
+                     "threshold in the signal definition is NOT being applied.\n";
+        warnedNoMuP = true;
+      }
+      const bool muAboveThreshold = haveMuP ? ( pmu_true > MUON_MOM_MIN_TRUE ) : true;
+
+      //  The meson veto currently removes NOTHING: no signal event in this NuWro
+      //  hyperon sample contains a pi0, kaon or eta. It is imposed anyway so that the
+      //  measured quantity is defined rather than inherited from whatever the
+      //  generator happened to produce, and because a different generator -- the GENIE
+      //  overlay samples in preparation -- may well produce Sigma0 with an associated
+      //  pi0.
+      bool IsSignal = (nu_pdg == -14) && (ccnc == 0) && hasSigma0
+                      && muAboveThreshold && !hasOtherMeson;
 
       // ── Sample assignment ────────────────────────────────────────────────────
       int s = (fd.sample >= 0) ? fd.sample : (IsSignal ? 0 : 1);
@@ -467,29 +659,35 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
         }
       }
 
-      // ── Joint proton/pion assignment via a combined PID discriminant ─────────
-      //  D = LLR/σ_LLR + (χ²_p − χ²_π)/σ_Δχ²  (high → pion-like, low → proton-like).
-      //  Combining the LLR PID with the proton/pion χ² difference separates true
-      //  protons from true pions with AUC 0.873, vs 0.838 for χ²_p alone and 0.852
-      //  for LLR alone.  LLR is always finite; the χ² term is dropped per-track
-      //  when undefined (~30% of tracks).  Proton = argmin D, pion = argmax D.
-      auto Dpi = [&](int i){
-        double d = trk_llr_pid_score_v->at(i) / LLR_SCALE;
-        double dchi = trk_pid_chipr_v->at(i) - trk_pid_chipi_v->at(i);
-        if (std::isfinite(dchi)) d += dchi / DCHI_SCALE;
-        return d;
-      };
-      int proton_index = -1; bool sel_proton = false;
+      // ── Joint proton/pion assignment (see PidAssign.h) ──────────────────────
+      //  The old rule ranked non-muon tracks by a single monotonic discriminant
+      //  D = LLR/σ_LLR + (χ²_p − χ²_π)/σ_Δχ² and took its two extremes. Measured
+      //  against HyperonProduction truth, the pion slot that produces is a true
+      //  π⁻ only 33.5% of the time: photons (20.4%) and muons (15.4%) sit at the
+      //  same high-D end as a real pion. Scoring each track separately for the
+      //  two roles and taking the best ORDERED PAIR lifts that to 42.5% with the
+      //  proton unchanged, at no cost in efficiency -- the surviving events are
+      //  identical, only the indices change.
+      std::vector<int> cand;
       for (int i = 0; i < n; i++) {
         if (i == muon_index || !isTrack(i)) continue;
-        sel_proton = true;
-        if (proton_index == -1 || Dpi(i) < Dpi(proton_index)) proton_index = i;
+        cand.push_back(i);
       }
-      int pion_index = -1; bool sel_pion = false;
-      for (int i = 0; i < n; i++) {
-        if (i == muon_index || i == proton_index || !isTrack(i)) continue;
-        sel_pion = true;
-        if (pion_index == -1 || Dpi(i) > Dpi(pion_index)) pion_index = i;
+      const bool sel_proton = !cand.empty();       // ProtonCandidate: ≥1 non-muon trk
+      const bool sel_pion   = cand.size() >= 2;    // PionCandidate:   ≥2 non-muon trk
+      int proton_index = -1, pion_index = -1;
+      if (sel_pion) {
+        std::vector<double> dvv(n, 0.0), nhv(n, 0.0);
+        for (int i = 0; i < n; i++) {
+          dvv[i] = pfpDist[i];
+          nhv[i] = (pfnplanehits_Y && i < (int)pfnplanehits_Y->size())
+                     ? (double)pfnplanehits_Y->at(i) : 0.0;
+        }
+        PidAssign::assign(cand, *trk_score_v, *trk_llr_pid_score_v,
+                          *trk_pid_chipr_v, *trk_pid_chipi_v, *trk_len_v,
+                          dvv, nhv, proton_index, pion_index);
+      } else if (sel_proton) {
+        proton_index = cand[0];                    // only one track can fill the slot
       }
 
       // ── Shower candidates: the two showers closest to the vertex ─────────────
@@ -610,24 +808,42 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
       Cuts[2] = Cuts[1] && sel_cosmic;             // CosmicVeto (topological_score)
       Cuts[3] = Cuts[2] && sel_nshowers;           // NShowers
       Cuts[4] = Cuts[3] && sel_muon;               // MuonCandidate
-      Cuts[5] = Cuts[4] && sel_proton;             // ProtonCandidate (≥1 non-muon trk)
-      Cuts[6] = Cuts[5] && sel_pion;               // PionCandidate   (≥2 non-muon trk)
+      Cuts[5] = Cuts[4] && (requireProtonPion ? sel_proton : true);  // ProtonCandidate
+      Cuts[6] = Cuts[5] && (requireProtonPion ? sel_pion   : true);  // PionCandidate
       Cuts[7] = Cuts[6] && sel_ntracks;            // NTracksCut
+
+      // Preselection gate for the BDT dump and evaluation. With requirePion=false
+      // the third-track requirement is dropped: events with no pion candidate are
+      // KEPT and their pion-derived inputs carry sentinels, so the comparison
+      // isolates the effect of the CUT rather than of a different feature set.
+      const bool presel = requirePion ? Cuts[7] : (Cuts[5] && sel_ntracks);
 
       // ── BDTG final discriminant (evaluated on the preselected sample) ────────
       //  Fill the feature vector once (also used for the training dump), then
       //  evaluate the BDT.  Sentinels (-1) handled as in training.
       double bdtg = -99.0;
-      if (Cuts[7]) {
+      if (presel) {
         const double shrE = shr_energy_y_v->at(shower1_index);
         bdtv[0]=trk_llr_pid_score_v->at(muon_index); bdtv[1]=trk_len_v->at(muon_index);
         bdtv[2]=pfpDist[muon_index]; bdtv[3]=trk_score_v->at(muon_index); bdtv[4]=pfnplanehits_Y->at(muon_index);
-        bdtv[5]=trk_llr_pid_score_v->at(pion_index); bdtv[6]=trk_len_v->at(pion_index);
-        bdtv[7]=pfpDist[pion_index]; bdtv[8]=trk_score_v->at(pion_index); bdtv[9]=pfnplanehits_Y->at(pion_index);
-        bdtv[10]=trk_calo_energy_y_v->at(pion_index);
-        bdtv[11]=trk_llr_pid_score_v->at(proton_index); bdtv[12]=trk_len_v->at(proton_index);
-        bdtv[13]=pfpDist[proton_index]; bdtv[14]=trk_score_v->at(proton_index); bdtv[15]=pfnplanehits_Y->at(proton_index);
-        bdtv[16]=trk_calo_energy_y_v->at(proton_index); bdtv[17]=trk_pid_chipr_v->at(proton_index);
+        // Pion inputs go through a guarded accessor: with requirePion=false the
+        // pion candidate may not exist, and the sentinel is what the BDT sees.
+        auto PATf=[&](std::vector<float>* v){
+          return (pion_index>-1 && v && pion_index<(int)v->size()) ? (double)v->at(pion_index) : -1.0; };
+        auto PATi=[&](std::vector<int>* v){
+          return (pion_index>-1 && v && pion_index<(int)v->size()) ? (double)v->at(pion_index) : -1.0; };
+        bdtv[5]=PATf(trk_llr_pid_score_v); bdtv[6]=PATf(trk_len_v);
+        bdtv[7]=(pion_index>-1?pfpDist[pion_index]:-1.0); bdtv[8]=PATf(trk_score_v); bdtv[9]=PATi(pfnplanehits_Y);
+        bdtv[10]=PATf(trk_calo_energy_y_v);
+        // Proton inputs guarded the same way: the slot can be empty once the
+        // candidate requirements are optional.
+        auto RATf=[&](std::vector<float>* v){
+          return (proton_index>-1 && v && proton_index<(int)v->size()) ? (double)v->at(proton_index) : -1.0; };
+        auto RATi=[&](std::vector<int>* v){
+          return (proton_index>-1 && v && proton_index<(int)v->size()) ? (double)v->at(proton_index) : -1.0; };
+        bdtv[11]=RATf(trk_llr_pid_score_v); bdtv[12]=RATf(trk_len_v);
+        bdtv[13]=(proton_index>-1?pfpDist[proton_index]:-1.0); bdtv[14]=RATf(trk_score_v); bdtv[15]=RATi(pfnplanehits_Y);
+        bdtv[16]=RATf(trk_calo_energy_y_v); bdtv[17]=RATf(trk_pid_chipr_v);
         bdtv[18]=pfnplanehits_Y->at(shower1_index); bdtv[19]=pfpDist[shower1_index];
         bdtv[20]=shr_tkfit_dedx_y_v->at(shower1_index); bdtv[21]=(shrE>0?shrE/1000.0:-1.0);
         bdtv[22]=dMuPi; bdtv[23]=dPrPi; bdtv[24]=dPrMu; bdtv[25]=dS1Mu; bdtv[26]=dS1Pi; bdtv[27]=dS1Pr;
@@ -663,7 +879,8 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
           bdtv[54] = una;
           bdtv[55] = ( slnhits > 0 && una >= 0.f ) ? una / float(slnhits) : -1.0f;
         }
-        bdtv[56] = W;
+        bdtv[56] = (proton_index>-1 && pion_index>-1) ? 1.0f : 0.0f;   // HasPair
+        bdtv[57] = W;
         bdtIsOdd = (float)(((evt % 2) + 2) % 2);   // event-number parity (CV fold tag)
         for (int k = 0; k < NBV - 1; k++) if (!std::isfinite(bdtv[k])) bdtv[k] = -1.0f;
         // Score with the fold that did NOT train on this event: even→B, odd→A.
@@ -674,10 +891,54 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
           tNuPdg  = nu_pdg;          tCcnc   = ccnc;       tInter = interaction;
           tNuE    = nu_e;            tHasPi0 = hasPi0 ? 1 : 0;
           tMuPdg  = backtracked_pdg->at(muon_index);
-          tPrPdg  = backtracked_pdg->at(proton_index);
-          tPiPdg  = backtracked_pdg->at(pion_index);
+          tPrPdg  = (proton_index>-1) ? backtracked_pdg->at(proton_index) : 0;
+          tPiPdg  = (pion_index>-1) ? backtracked_pdg->at(pion_index) : 0;
           tShrPdg = backtracked_pdg->at(shower1_index);
           tCosmic = (backtracked_overlay_purity->at(muon_index) > 0.5) ? 1 : 0;
+
+          // ── all-PFP block ───────────────────────────────────────────────────
+          for (int k = 0; k < NSLOT; k++) for (int j = 0; j < NPV; j++) pfpv[k][j] = -1.0f;
+          nPFPtot = (float)n;
+          {
+            std::vector<int> ord;
+            for (int i = 0; i < n; i++) ord.push_back(i);
+            auto hitsOf = [&](int i){
+              return (pfnplanehits_Y && i < (int)pfnplanehits_Y->size())
+                     ? pfnplanehits_Y->at(i) : 0; };
+            std::sort(ord.begin(), ord.end(),
+                      [&](int a, int b){ return hitsOf(a) > hitsOf(b); });
+            auto GF = [&](std::vector<float>* v, int i){
+              return (v && i < (int)v->size() && std::isfinite(v->at(i)))
+                     ? (float)v->at(i) : -1.0f; };
+            for (int k = 0; k < NSLOT && k < (int)ord.size(); k++) {
+              const int i = ord[k];
+              TVector3 d(trk_dir_x_v->at(i), trk_dir_y_v->at(i), trk_dir_z_v->at(i));
+              const bool haveDir = d.Mag() > 0;
+              if (haveDir) d = d.Unit();
+              pfpv[k][0]  = GF(trk_score_v, i);
+              pfpv[k][1]  = GF(trk_len_v, i);
+              pfpv[k][2]  = GF(trk_llr_pid_score_v, i);
+              pfpv[k][3]  = GF(trk_pid_chipr_v, i);
+              pfpv[k][4]  = GF(trk_pid_chipi_v, i);
+              pfpv[k][5]  = (float)pfpDist[i];
+              pfpv[k][6]  = (pfnplanehits_Y && i < (int)pfnplanehits_Y->size())
+                            ? (float)pfnplanehits_Y->at(i) : -1.0f;
+              pfpv[k][7]  = GF(trk_calo_energy_y_v, i);
+              pfpv[k][8]  = GF(trk_energy_proton_v, i);
+              pfpv[k][9]  = GF(trk_range_muon_mom_v, i);
+              pfpv[k][10] = GF(shr_tkfit_dedx_y_v, i);
+              pfpv[k][11] = GF(shr_energy_y_v, i);
+              pfpv[k][12] = GF(shr_moliere_avg_v, i);
+              pfpv[k][13] = (haveDir && muonDir.Mag() > 0) ? (float)d.Dot(muonDir) : -2.0f;
+              pfpv[k][14] = haveDir ? (float)d.Z() : -2.0f;
+            }
+            // pfpDist can be non-finite when a start position is unset, and TMVA
+            // aborts outright on NaN/inf rather than ignoring the event. Sweep the
+            // whole block rather than guarding each entry.
+            for (int k = 0; k < NSLOT; k++)
+              for (int j = 0; j < NPV; j++)
+                if (!std::isfinite(pfpv[k][j])) pfpv[k][j] = -1.0f;
+          }
           if (s == 0) TreeS->Fill(); else TreeB->Fill();
         }
       }
@@ -804,6 +1065,9 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
 
   fout->Write();
   fout->Close();
+  if (frw.ok)
+    std::cout << "NuMI flux reweight applied to " << frw.nUsed << " NuWro events ("
+              << frw.nEmpty << " outside the map -> weight 1)\n";
   std::cout << "Wrote " << outname << "\n";
 
   if (writeBDT) {
@@ -812,7 +1076,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
               << " signal, TreeB=" << TreeB->GetEntries() << " background\n";
     TreeS->Write(); TreeB->Write();
     fbdt->Close();
-    std::cout << "Wrote BDTInput.root\n";
+    std::cout << "Wrote " << (requirePion ? "BDTInput.root" : "BDTInput_nopion.root") << "\n";
   }
   delete reader;
 }
