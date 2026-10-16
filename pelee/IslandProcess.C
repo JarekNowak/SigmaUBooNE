@@ -20,10 +20,11 @@
 //  the precuts would remove is also known.
 //
 //  Run:  root -l -b -q 'IslandProcess.C("lists/sig_genie.list",0,true,"isl_sig_genie.root",1.9284e-2)'
-//        root -l -b -q 'IslandProcess.C("lists/bkg_overlay.list",0,false,"isl_bkg.root",1.6536e-1)'
+//        root -l -b -q 'IslandProcess.C("lists/bkg_overlay.list",0,false,"isl_bkg.root",1.6352e-1)'
 //  The last argument is the POT scale to data (1.1526e21 POT), see HypCutFlow.C.
 //  For lists/bkg_overlay.list it became 1.6536e-1 on 2026-09-24, when the overlay
-//  extension took that list to 6.9701e21 POT (was 4.1468e-1 at 2.7795e21).
+//  extension took that list to 6.9701e21 POT (was 4.1468e-1 at 2.7795e21), and
+//  1.6352e-1 on 2026-10-16, when the residue pass took it to 7.0488e21.
 // ============================================================================
 #include "HypInput.h"
 #include "SigmaFV.h"

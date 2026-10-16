@@ -83,15 +83,18 @@ static std::vector<std::string> loadList(const char* p){
 //  ana/MetaTree (as DumpBDTHyp.C does). Pass <=0 to re-scan the files instead --
 //  correct but slow, since it opens every file just to read a one-entry tree.
 //  bkgPOT was 2.7795e21 for the 3491-file Run 3 list; on 2026-09-24 the RHC overlay
-//  extension (Runs 1/2/3/4a, 10,533 files, 4.1906e21) was appended to
-//  lists/bkg_overlay.list, giving 14,024 files and 6.9701e21. The old list is kept
-//  as lists/bkg_overlay_run3.list -- pass it with bkgPOT=2.7795e21 to reproduce
-//  earlier numbers. Re-measure both after the residue pass adds its files.
+//  extension (Runs 1/2/3/4a) was appended to lists/bkg_overlay.list, and on
+//  2026-10-16 the 140 files recovered by the residue pass were added, giving
+//  14,164 files, 1,842,274 events and 7.0488e21 POT (measured over the list, as
+//  DumpBDTHyp.C does). That is +1.13% of POT against the 14,024-file / 6.9701e21
+//  state, so every background yield here is 1.11% lower than numbers quoted before
+//  that date. The old list is kept as lists/bkg_overlay_run3.list -- pass it with
+//  bkgPOT=2.7795e21 to reproduce the Run 3-only numbers.
 //  fluxWeights: pass the NuWro table (see above) when sigList is lists/sig_nuwro.list.
 //  Leave it empty for the GENIE signal, which is already on the current flux.
 void HypCutFlow(const char* sigList="lists/sig_genie.list",
                 const char* bkgList="lists/bkg_overlay.list",
-                double sigPOT=5.9770e22, double bkgPOT=6.9701e21,
+                double sigPOT=5.9770e22, double bkgPOT=7.0488e21,
                 bool requireProtonPion=false,
                 const char* fluxWeights="")
 {

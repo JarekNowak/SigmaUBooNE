@@ -337,7 +337,7 @@ Every $S$ and $B$ in this repo is the expected count in the full RHC dataset,
 | sample | format | generated POT | scale |
 |---|---|---|---|
 | GENIE hyperon signal, `sig_genie.list` (4851 files) | hypana | 5.9770e22 | 1.9284e-2 |
-| RHC overlay background, `bkg_overlay.list` (14,024 files) | hypana | 6.9701e21 | 1.6536e-1 |
+| RHC overlay background, `bkg_overlay.list` (14,164 files) | hypana | 7.0488e21 | 1.6352e-1 |
 | &nbsp;&nbsp;— Run 3 slice only, `bkg_overlay_run3.list` (3491 files) | hypana | 2.7795e21 | 4.1468e-1 |
 | NuWro Σ⁰ signal, `sig_nuwro.list` (2500 files) | hypana | 1.3394e24 | 8.6053e-4 |
 | NuWro Σ⁰ signal, `Hyperons_Nuwro_run3b_WithCR_pelee_2500.root` | PeLEE | 1.3394e24 | 8.6053e-4 |
@@ -356,11 +356,14 @@ sum over the merged ntuple (1.33940e24, 249832 entries) agree to 4 digits.
 The hypana overlay used to be only the **Run 3** slice (2.78e21 of the 9.94e21 the
 PeLEE chain uses), which is why its per-event weight was 0.41 and why nothing below
 ~2 background events could be resolved. Since 2026-09-24 `bkg_overlay.list` also holds
-the RHC overlay extension (Runs 1/2/3/4a, 10,533 files, 4.1906e21 POT, 1,095,671
-events), so the list is 14,024 files at **6.9701e21** POT -- 70% of the full RHC, a
-per-event weight of 0.165, and a background MC statistical error 0.63x its former
-size. POT/event agrees between the two (3.825e15 new vs 3.829e15 existing), so they
-combine without a relative normalisation. Paths:
+the RHC overlay extension (Runs 1/2/3/4a). On 2026-10-16 the 140 files recovered by
+the residue pass were added, completing it at 10,673 files, 4.2693e21 POT and
+1,116,279 events, so the list is **14,164 files at 7.0488e21 POT** -- 71% of the
+full RHC, a per-event weight of 0.164, and a background MC statistical error 0.62x
+its former size. That is +1.13% of POT against the 14,024-file state, so background
+yields quoted before that date are 1.11% high. POT/event agrees between the two
+slices (3.825e15 extension vs 3.829e15 existing), so they combine without a
+relative normalisation. Paths:
 `/data/uboone/SigmaFiles/prod_numi_extunbiased_nu_overlay_g4.10.4_flux_run3_rhc_pandora_reco2_reco2/hypana/`.
 
 ### The NuWro signal sample (run3b, 2026-10-15)
@@ -568,10 +571,11 @@ database keyed on run number.
 | | events | POT | vs existing |
 |---|---|---|---|
 | existing hypana overlay (Run 3) | 725,995 | 2.7795e21 | — |
-| **extension processed 2026-09-24** (10,533 files) | **1,095,671** | **4.1906e21** | **+151%** |
-| combined `bkg_overlay.list` (14,024 files) | 1,821,666 | 6.9701e21 | **2.51x** |
-| residue still to process (227 files, ~2%) | ~21,000 | ~0.09e21 | +1.3% |
-| to reach the full RHC 9.94e21 | +780,000 | +3.0e21 | needs ~7 TB more reco1 |
+| extension processed 2026-09-24 (10,533 files) | 1,095,671 | 4.1906e21 | +151% |
+| residue pass recovered 2026-10-16 (140 files) | 20,608 | 0.0787e21 | +1.1% |
+| **extension complete** (10,673 files) | **1,116,279** | **4.2693e21** | **+154%** |
+| combined `bkg_overlay.list` (14,164 files) | 1,842,274 | 7.0488e21 | **2.54x** |
+| to reach the full RHC 9.94e21 | +760,000 | +2.9e21 | needs ~7 TB more reco1 |
 
 So the ×3.6 ceiling implied by the PeLEE/hypana POT ratio requires ~22 TB of reco1
 and a few thousand core-days of reco2. What has landed so far adds 5%, which does

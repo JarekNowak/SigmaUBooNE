@@ -8,7 +8,7 @@
 //  precuts), |m - m_Lambda| < 60 MeV, decay length > 0.5 cm, cos alpha > 0.80.
 //
 //  Run:  root -l -b -q 'IslandCache.C("lists/sig_genie.list",0,true,"islcache_sig.root",1.9284e-2)'
-//        root -l -b -q 'IslandCache.C("lists/bkg_overlay.list",0,false,"islcache_bkg.root",1.6536e-1)'
+//        root -l -b -q 'IslandCache.C("lists/bkg_overlay.list",0,false,"islcache_bkg.root",1.6352e-1)'
 // ============================================================================
 #include "HypInput.h"
 #include "SigmaFV.h"
