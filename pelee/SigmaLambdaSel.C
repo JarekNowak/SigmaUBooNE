@@ -31,16 +31,19 @@
 //  written by IslandProcess.C): no pair precuts, |m - m_Lambda| < 20 MeV,
 //  cos alpha > 0.95, decay length > 0.5 cm, island on >= 2 planes with the tuned
 //  connectivity in Island.h (2 wires x 20 ticks). Cross-validated by event parity
-//  (IslandXVal.C, IslandTune.C::IslandPoint). Expected at data POT: S = 1.39,
-//  B = 4.1 (10 raw MC events; parity halves 4 and 6), purity 25%. The one-plane
-//  point (islandPlanes=1) is S = 1.99, B = 19.5 and is the statistically safer
-//  background estimate.
+//  (IslandXVal.C, IslandTune.C::IslandPoint).
+//  2026-10-17: the photon conversion gap (photon start > 2 cm from the vertex) is ON
+//  by default. Measured out of sample on the RHC overlay extension (IslandHandles.C):
+//  it keeps 96-97% of signal and halves the two-plane background. Expected at data POT
+//  on the full background (lists/bkg_overlay.list, 7.0488e21 POT): S = 1.33 (GENIE),
+//  B = 3.76 (23 raw MC events), purity 26%. Without the gap: S = 1.39, B = 6.21 (38 raw).
 //
 //  This macro measures the chain; it does not yet write histograms or a BDT
 //  tree. Run it on signal and background separately and compare the tables.
 //
-//  Run:  root -l -b -q 'SigmaLambdaSel.C("lists/sig_genie.list",700,true)'
-//        root -l -b -q 'SigmaLambdaSel.C("lists/bkg_overlay.list",250,false)'
+//  Run:  root -l -b -q 'SigmaLambdaSel.C("lists/sig_genie.list",0,true)'
+//        root -l -b -q 'SigmaLambdaSel.C("lists/bkg_overlay.list",0,false)'
+//  Counts are raw MC events; scale by 1.9284e-2 (GENIE) and 1.6352e-1 (background).
 // ============================================================================
 #include "HypInput.h"
 #include "SigmaFV.h"
@@ -69,16 +72,16 @@ static const double LAM_MASS_WIN   = 0.020;  // GeV about the Lambda mass (scan 
 static const double COS_ALPHA_MIN  = 0.95;   // Lambda must point at its decay vertex (scan 2026-09-12, was 0.90)
 static const double DECAY_LEN_MIN  = 0.5;    // cm, a decay that actually flew
 
-static const int NC = 10;
+static const int NC = 11;
 static const char* CUTNAME[NC] = {
   "AllEvents", "SliceID", "FiducialV", "CosmicVeto", "NShowers",
-  "MuonCandidate", "PairCandidate", "LambdaMass", "PointingAlpha", "Island" };
+  "MuonCandidate", "PairCandidate", "LambdaMass", "PointingAlpha", "PhotonGap", "Island" };
 
 void SigmaLambdaSel(const char* list = "lists/sig_genie.list",
                     int maxFiles = 700, bool signalOnly = true,
                     bool requirePhoton = true, bool applyIsland = true,
                     bool usePrecuts = false, int islandPlanes = 2,
-                    bool applyMichel = false, bool photonGap = false)
+                    bool applyMichel = false, bool photonGap = true)
 {
   TChain ch("ana/OutputTree");
   std::ifstream in(list); std::string l; int nf = 0;
@@ -115,8 +118,10 @@ void SigmaLambdaSel(const char* list = "lists/sig_genie.list",
 
   const Long64_t N = ch.GetEntries();
   printf("\n  %s : %d files, %lld events\n", signalOnly?"SIGNAL":"BACKGROUND", nf, N);
-  printf("  requirePhoton=%d  applyIsland=%d  usePrecuts=%d  islandPlanes=%d  massWin=%.0f MeV  cosAlpha>%.2f\n",
-         (int)requirePhoton, (int)applyIsland, (int)usePrecuts, islandPlanes, 1000*LAM_MASS_WIN, COS_ALPHA_MIN);
+  printf("  requirePhoton=%d  applyIsland=%d  usePrecuts=%d  islandPlanes=%d  massWin=%.0f MeV  cosAlpha>%.2f"
+         "  photonGap=%d  applyMichel=%d\n",
+         (int)requirePhoton, (int)applyIsland, (int)usePrecuts, islandPlanes, 1000*LAM_MASS_WIN, COS_ALPHA_MIN,
+         (int)photonGap, (int)applyMichel);
   fflush(stdout);
 
   for(Long64_t ie = 0; ie < N; ++ie){
@@ -196,14 +201,17 @@ void SigmaLambdaSel(const char* list = "lists/sig_genie.list",
     for(int i=0;i<n;++i){ if(i==mu||i==pr||i==pi||isTrk(i)) continue;
       if(dv[i] < bs){ bs = dv[i]; s1 = i; } }
     if(requirePhoton && s1 < 0) continue;
-    // Optional handles measured in PhotonMichel.C (2026-09-12), off by default:
-    //  * photonGap: the photon must convert away from the vertex (>2 cm). Keeps
-    //    95% of signal, removes 21% of background at the one-plane point.
-    //  * applyMichel: a contained muon must have another PFP starting within 5 cm
-    //    of its end. What it removes is 87% true mu- (wrong-sign numu CC); the
-    //    signal muon is a mu+ and always decays. +15% FoM on the one-plane point,
-    //    nothing measurable on the two-plane point (8 MC background events).
-    if(photonGap && s1 >= 0 && dv[s1] < 2.0) continue;
+    // Two handles measured in PhotonMichel.C (2026-09-12) and, on the full
+    // background, in IslandHandles.C (2026-10-17):
+    //  * photonGap (ON by default): the photon must convert away from the vertex
+    //    (>2 cm). Keeps 96-97% of signal; at two planes it removes 46% of the
+    //    extension's background, mostly hadrons reconstructed as a shower at the
+    //    vertex (FoM15 0.434 -> 0.555 out of sample).
+    //  * applyMichel (off): a contained muon must have another PFP starting within
+    //    5 cm of its end. What it removes is 87% true mu- (wrong-sign numu CC); the
+    //    signal muon is a mu+ and always decays. Costs 22% of signal for +3% FoM at
+    //    two planes, and lowers the FoM when combined with the gap.
+    if(photonGap && s1 >= 0 && dv[s1] < 2.0) continue;                 nCut[9]++;
     if(applyMichel && tex && mu < (int)tex->size()){
       const TVector3 mEnd(tex->at(mu), tey->at(mu), tez->at(mu));
       if(SigmaFV::isFiducial(mEnd.X(), mEnd.Y(), mEnd.Z())){
@@ -231,7 +239,7 @@ void SigmaLambdaSel(const char* list = "lists/sig_genie.list",
       }
       islandOK = (nPass >= islandPlanes);
     }
-    if(!islandOK) continue;                                             nCut[9]++;
+    if(!islandOK) continue;                                             nCut[10]++;
 
     nSurv++;
     const double fl = std::sqrt((lex-lsx)*(lex-lsx)+(ley-lsy)*(ley-lsy)+(lez-lsz)*(lez-lsz));

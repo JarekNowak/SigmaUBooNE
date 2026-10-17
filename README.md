@@ -3,11 +3,15 @@
 Three selections live in this repo. They are fully independent — different ntuple
 formats, different samples, separate inputs and outputs — and can be run side by side.
 
-| chain | format | S | B | purity | role |
-|---|---|---|---|---|---|
-| `SigmaSelection.C` + BDT | PeLEE | 4.20 | 778 | 0.54% | **the analysis**: the only chain that can see data, EXT and dirt |
-| `DumpBDTHyp.C` + BDT | hypana | 19.3 | 670 | 2.8% | truth studies; candidate purity, backtracking |
-| `SigmaLambdaSel.C` | hypana | 1.39 | 4.1 | **25%** | **best performing**; needs wire activity, so MC-only for now |
+| chain | format | signal MC | S | B | purity | role |
+|---|---|---|---|---|---|---|
+| `SigmaSelection.C` + BDT | PeLEE | NuWro run3b | 2.85 | 750 | 0.38% | **the analysis**: the only chain that can see data, EXT and dirt |
+| `DumpBDTHyp.C` + BDT | hypana | GENIE | 19.3 | 670 | 2.8% | truth studies; candidate purity, backtracking (Run 3 background only) |
+| `SigmaLambdaSel.C` | hypana | GENIE | 1.33 | 3.76 | **26%** | **best performing**; needs wire activity, so MC-only for now (NuWro: S 0.142) |
+
+NuWro yields include hyperon FSI and GENIE yields do not, a model difference of roughly
+4x in the Σ⁰ rate (see "The three signal samples disagree on the absolute Σ⁰ rate"),
+so compare the chains by purity and efficiency, not by S across rows.
 
 All yields are POT-scaled to the full RHC data exposure 1.1526e21 (see
 [POT normalisation](#pot-normalisation)). The three are not alternatives to choose
@@ -184,8 +188,8 @@ background systematics. It follows the Lambda CCQE analysis (Thorpe & Nowak,
 because at equal efficiency that analysis reaches 91% purity against our 2.8%.
 
 ```bash
-root -l -b -q 'SigmaLambdaSel.C("lists/sig_genie.list",0,true)'    # signal
-root -l -b -q 'SigmaLambdaSel.C("lists/bkg_overlay.list",0,false)' # background
+root -l -b -q 'SigmaLambdaSel.C("lists/sig_genie.list",0,true)'    # signal, raw counts x 1.9284e-2
+root -l -b -q 'SigmaLambdaSel.C("lists/bkg_overlay.list",0,false)' # background, raw counts x 1.6352e-1
 ```
 
 Source: `SigmaLambdaSel.C`, `LambdaStyle.h` (range momenta, V-fit secondary vertex,
@@ -209,12 +213,17 @@ pair features), `Island.h` (connectedness test), `SigmaFV.h`, `HypInput.h`.
 
 ### Operating point
 
-`LAM_MASS_WIN = 0.020`, `COS_ALPHA_MIN = 0.95`, decay length > 0.5 cm, island on
+`LAM_MASS_WIN = 0.020`, `COS_ALPHA_MIN = 0.95`, decay length > 0.5 cm, **photon start
+> 2 cm from the vertex** (`photonGap`, default on since 2026-10-17), island on
 **≥ 2 planes**, no precut veto. Chosen from a full-statistics scan (`IslandAna.C`) and
-checked out-of-sample by event parity (`IslandXVal.C`).
+checked out-of-sample by event parity (`IslandXVal.C`), by the RHC extension
+(`IslandScan2()`, `IslandHandles.C`) and, for the gap, on the extension alone. The gap
+is explained in [Two optional handles](#two-optional-handles-applymichel-photongap).
 
 Full-statistics background (`lists/bkg_overlay.list`, 14,164 files, 7.0488e21 POT,
-weight 0.1635), GENIE signal; re-measured 2026-10-17 with `IslandOpPoint.C`:
+weight 0.1635), GENIE signal. These are `SigmaLambdaSel.C` on the full lists (logs
+`sls_gap_sig.log`, `sls_gap_bkg.log`), and every row agrees with the `IslandOpPoint.C`
+cache to the event:
 
 | stage | raw sig | raw bkg | S | B |
 |---|---|---|---|---|
@@ -224,17 +233,23 @@ weight 0.1635), GENIE signal; re-measured 2026-10-17 with `IslandOpPoint.C`:
 | PairCandidate | 921 | 51238 | 17.8 | 8378 |
 | LambdaMass ±20 MeV | 504 | 16391 | 9.72 | 2680 |
 | PointingAlpha | 144 | 706 | 2.78 | 115.4 |
-| **Island (≥2 planes)** | **72** | **38** | **1.39 ± 0.16** | **6.21 ± 1.01** |
+| PhotonGap > 2 cm | 139 | 549 | 2.68 | 89.8 |
+| **Island (≥2 planes)** | **69** | **23** | **1.33 ± 0.16** | **3.76 ± 0.78** |
 
-Purity 18%, absolute efficiency 0.48%, and **97.2% of surviving signal has true Lambda
-flight > 2 cm** against 43% in the BDT chain — the displaced-vertex bias is cured,
-which was the point of the rewrite. Errors are MC statistics, √Σw².
+Purity 26%, absolute efficiency 0.46%, and **98.6% of surviving signal has true Lambda
+flight > 2 cm** (NuWro 93.9%) against 43% in the BDT chain. The displaced-vertex bias
+is cured, which was the point of the rewrite. Errors are MC statistics, √Σw². Without
+the gap the same point is S = 1.39 ± 0.16, B = 6.21 ± 1.01 (72/38 raw), purity 18%.
 
-The **one-plane** point (`islandPlanes=1`) gives S = 1.99 ± 0.20, B = 21.4 ± 1.9 on
-103/131 raw events (purity 8.5%).
+The **one-plane** point (`islandPlanes=1`) gives S = 1.89 ± 0.19, B = 14.9 ± 1.6 on
+98/91 raw events (purity 11.3%); without the gap 1.99 and 21.4 (103/131).
 
-**The background extension raised the two-plane B by 1.5x, and the old value was the
-low one.** On the Run 3 list alone (the first 3,491 files, 2.7795e21 POT) the same code
+Odd/even cross-validation (`IslandXVal.C`, f = 15%, gap on) has both folds choosing
+≥ 2 planes with no precut veto. Out of sample: S 1.16, B 4.7 (60/29 raw), purity 20%,
+FoM 0.457, against 0.380 without the gap.
+
+**The background extension raised the two-plane B by 1.5x (numbers without the gap),
+and the old value was the low one.** On the Run 3 list alone (the first 3,491 files, 2.7795e21 POT) the same code
 gives B = 4.15 ± 1.31 on 10 raw events, the number this table used to quote. Every stage
 up to PointingAlpha agrees per POT between the two samples to 1–4%; only the last step
 differs. Given the 38 events, the Run 3 list holds 10 against 15.0 expected from its
@@ -245,28 +260,27 @@ gives B = 7.6 ± 1.4 (28 raw). The island-pass rate after PointingAlpha does not
 the era within the statistics (two-plane: Run 3 list 3.7 ± 1.2%, ext Run 1 3.3 ± 1.9%,
 Run 2 8.3 ± 2.1%, Run 3 6.4 ± 1.9%; χ² ≈ 6.6 for 4 dof). Across the 123,000
 MuonCandidate rows no (run, subrun, event) repeats, so the extension is statistically
-independent of the original sample. Odd/even cross-validation (`IslandXVal.C`, f = 15%)
-now has both folds choosing ≥ 2 planes with no precut veto; one fold used to choose the
-veto. Out of sample: S 1.21, B 7.7 (63/47 raw), FoM 0.380.
+independent of the original sample. Before the extension, one cross-validation fold
+chose the precut veto; with full statistics neither does.
 
 **With the NuWro signal** (`isl_sig_nuwro.root`, flux-weighted, see
 [The NuWro signal sample](#the-nuwro-signal-sample-run3b-2026-10-15)) the same point gives
-S = 0.147 ± 0.009 on 253 raw events (0.226 ± 0.015, 374 raw, at one plane): 9.4x below
+S = 0.142 ± 0.009 on 245 raw events (0.217 ± 0.015, 358 raw, at one plane), 9.4x below
 GENIE. The selection is the same for both generators. NuWro's efficiency from true Σ⁰ to
-two planes is 0.43% against 0.48%, and half of the PointingAlpha survivors pass the
-island test in both. The factor is the normalisation: hyperon FSI, which NuWro has and
+the two-plane point is 0.42% against 0.46%, the gap keeps 97% of it against 96%, and
+half of the PointingAlpha survivors pass the island test in both. The factor is the normalisation: hyperon FSI, which NuWro has and
 GENIE does not, plus the flux weight.
 
 ### Why S/√(S+B) is the wrong metric here
 
 With a fractional systematic *f* on the background, using S/√(S+B+(fB)²):
 
-| f | BDT chain (S 19.3, B 670) | Lambda-style (S 1.39, B 6.21) | (was, B 4.15) |
-|---|---|---|---|
-| 0% | 0.736 | 0.504 | 0.593 |
-| 7% | 0.359 | 0.498 | 0.590 |
-| 15% | 0.186 | 0.477 | 0.571 |
-| 30% | 0.095 | 0.417 | 0.508 |
+| f | BDT chain (S 19.3, B 670) | **Lambda-style (S 1.33, B 3.76)** | no gap (S 1.39, B 6.21) | Run 3 only, no gap (B 4.15) |
+|---|---|---|---|---|
+| 0% | 0.736 | **0.590** | 0.504 | 0.593 |
+| 7% | 0.359 | **0.586** | 0.498 | 0.590 |
+| 15% | 0.186 | **0.572** | 0.477 | 0.571 |
+| 30% | 0.095 | **0.527** | 0.417 | 0.508 |
 
 The crossover is at ~7% (the BDT column predates the background extension and the
 NuWro retrain), and the technote quotes 30–60% on RES/DIS backgrounds. At any
@@ -365,18 +379,23 @@ below).
 
 | region | S | B | raw B | S/B |
 |---|---|---|---|---|
-| signal region (blind) | 1.99 | 21.4 | 131 | 9.3% |
-| mass sideband, +40 to +200 MeV | 0.02 | 14.4 | 88 | 0.1% |
-| α sideband, 0 < cos α < 0.8 | 0.52 | 87.8 | 537 | 0.6% |
-| island-fail region | 0.79 | 94.0 | 575 | 0.8% |
+| signal region (blind) | 1.89 | 14.9 | 91 | 12.7% |
+| mass sideband, +40 to +200 MeV | 0.02 | 10.5 | 64 | 0.2% |
+| α sideband, 0 < cos α < 0.8 | 0.50 | 58.2 | 356 | 0.9% |
+| island-fail region | 0.79 | 74.9 | 458 | 1.1% |
 
-(one-plane point for statistics; full background and tuned island, 2026-10-17). All three are RES/DIS-dominated like the signal
+(one-plane point for statistics; full background, tuned island and photon gap in every
+region, 2026-10-17. `IslandSideband.C(...,false)` drops the gap.) All three are RES/DIS-dominated like the signal
 region. The α sideband is the workhorse. Two things to know: the mass sideband exists
 only *above* the peak — the p+π invariant mass has a kinematic floor at 1.078 GeV — and
 the signal peak sits in the −20…0 MeV bin because the pion runs on the muon range
 hypothesis.
 
-### Two optional handles (`applyMichel`, `photonGap`; default off -- gap recommended on)
+### Two optional handles (`applyMichel`, `photonGap`)
+
+`photonGap` is **on by default since 2026-10-17**, part of the operating point above;
+`applyMichel` stays off.
+
 
 - **Michel tag.** The signal muon is a μ⁺ 100% of the time; the surviving background
   muon is a true **μ⁻ 78%** (wrong-sign ν_μ CC in RHC). A μ⁺ always decays, a μ⁻

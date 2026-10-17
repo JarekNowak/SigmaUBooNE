@@ -3,7 +3,8 @@
 //  Lambda-style operating points, read from IslandProcess.C caches.
 //
 //  Operating point as in SigmaLambdaSel.C: best pair (no precut veto), Lambda mass
-//  within +-20 MeV, decay length > 0.5 cm, cos(alpha) > 0.95, island on >= N planes.
+//  within +-20 MeV, decay length > 0.5 cm, cos(alpha) > 0.95, photon start > 2 cm from
+//  the vertex (photonGap, on since 2026-10-17), island on >= N planes.
 //  The error on each yield is sqrt(sum w^2), i.e. the MC statistics of that sample.
 //  The FoM is S/sqrt(S+B+(fB)^2) for the background systematics f quoted in the README.
 //
@@ -16,16 +17,18 @@
 
 struct Yield { long raw=0; double w=0, w2=0; };
 
-static void count(const char* fn, int planes, double win, double cmin, Yield& y){
+static void count(const char* fn, int planes, double win, double cmin, bool gap, Yield& y){
   TFile f(fn); TTree* t=(TTree*)f.Get("isl");
   if(!t){ printf("  no isl tree in %s\n",fn); return; }
-  int hasPair=0, islN=0; double w=0, mass=-1, len=-1, cosA=-2;
+  int hasPair=0, islN=0; double w=0, mass=-1, len=-1, cosA=-2, phDist=-1;
   t->SetBranchAddress("hasPair",&hasPair); t->SetBranchAddress("islNPlanes",&islN);
   t->SetBranchAddress("weight",&w);        t->SetBranchAddress("mass",&mass);
   t->SetBranchAddress("decayLen",&len);    t->SetBranchAddress("cosAlpha",&cosA);
+  t->SetBranchAddress("phDist",&phDist);
   for(Long64_t i=0;i<t->GetEntries();++i){
     t->GetEntry(i);
     if(!hasPair || std::fabs(mass-1.115683)>=win || len<=0.5 || cosA<=cmin || islN<planes) continue;
+    if(gap && !(phDist>2.0)) continue;
     y.raw++; y.w+=w; y.w2+=w*w;
   }
 }
@@ -33,13 +36,13 @@ static void count(const char* fn, int planes, double win, double cmin, Yield& y)
 static double fom(double s,double b,double f){ return (s+b>0)? s/std::sqrt(s+b+f*f*b*b) : 0; }
 
 void IslandOpPoint(const char* sigFile="isl_sig_nuwro.root", const char* bkgFile="isl_bkg.root",
-                   double win=0.020, double cmin=0.95)
+                   double win=0.020, double cmin=0.95, bool photonGap=true)
 {
-  printf("\n  signal %s\n  background %s\n  mass +-%.0f MeV, cos(alpha) > %.2f, decay length > 0.5 cm\n",
-         sigFile, bkgFile, 1e3*win, cmin);
+  printf("\n  signal %s\n  background %s\n  mass +-%.0f MeV, cos(alpha) > %.2f, decay length > 0.5 cm, photon gap %s\n",
+         sigFile, bkgFile, 1e3*win, cmin, photonGap?"> 2 cm":"off");
   printf("\n  %-8s %16s %18s %8s %8s   FoM f=0 / 15%% / 30%%\n", "planes","S (raw)","B (raw)","purity","dB/B");
   for(int planes=1; planes<=2; ++planes){
-    Yield s, b; count(sigFile,planes,win,cmin,s); count(bkgFile,planes,win,cmin,b);
+    Yield s, b; count(sigFile,planes,win,cmin,photonGap,s); count(bkgFile,planes,win,cmin,photonGap,b);
     printf("  >= %-5d %6.3f+-%.3f (%3ld) %7.2f+-%.2f (%4ld) %7.1f%% %7.1f%%   %.3f / %.3f / %.3f\n",
            planes, s.w, std::sqrt(s.w2), s.raw, b.w, std::sqrt(b.w2), b.raw,
            (s.w+b.w>0)?100*s.w/(s.w+b.w):0, b.w>0?100*std::sqrt(b.w2)/b.w:0,
