@@ -148,10 +148,14 @@ struct HypInput {
     // per-PFP truth: now genuinely usable (pi-, gamma and hyperons all appear).
     bkt_pdg.assign(n,0);
     if(h_pfp_true_pdg) for(size_t k=0;k<n&&k<h_pfp_true_pdg->size();++k) bkt_pdg[k]=h_pfp_true_pdg->at(k);
-    // simb::Origin: 1=kBeamNeutrino, 2=kCosmicRay. The selection tests >0.5.
+    // Cosmic tag, PeLEE-style (1 = overlay/cosmic). pfp_true_origin is NOT simb::Origin:
+    // HyperonProduction's util::OriginType is 1 neutrino primary, 2 Lambda daughter,
+    // 3 other, 5 Sigma0 daughter, and -1 when the PFP has no MC match -- which is what the
+    // overlaid cosmic DATA gives. (Until 2026-10-17 this tested ==2 and so flagged the Lambda
+    // daughters; no hypana macro read it.)
     bkt_overlay_purity.assign(n,0.f);
     if(h_pfp_true_origin) for(size_t k=0;k<n&&k<h_pfp_true_origin->size();++k)
-      bkt_overlay_purity[k] = (h_pfp_true_origin->at(k)==2) ? 1.f : 0.f;
+      bkt_overlay_purity[k] = (h_pfp_true_origin->at(k)==-1) ? 1.f : 0.f;
     pfnplanehits_Y.assign(n,0); pfnhits.assign(n,0u);
     for(size_t k=0;k<n;++k){
       const int u=(h_hitsU&&k<h_hitsU->size())?h_hitsU->at(k):0;

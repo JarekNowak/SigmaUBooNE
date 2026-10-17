@@ -500,6 +500,23 @@ and lowers the FoM when added to the gap, so it stays off.
 **The photon is otherwise unused in this chain** — `NShowers` already requires a
 shower, so `requirePhoton` is a no-op. Σ mass and photon energy remain untouched.
 
+### EXT (beam-off) — factorised, interim
+
+The hypana EXT (`~/MicroBooNE/production/ext_hypana/`, NuMI-EXT-triggered events of the
+swizzled run3b ext_unbiased files) carries **150 data events per event**: an unbiased event is
+one sampled gate, so the whole sample is 0.67% of the data's cosmic statistics. It cannot be
+followed to the operating point (zero events = < 346 at 90% CL). `ExtFactor.C` factorises:
+EXT at MuonCandidate from `isl_ext.root` × the pass fraction to the operating point of the
+overlay's own cosmic-dominated candidates (`CosmicTag.C` → `isl_bkg_cos.root`: >50% of the
+selected slice's hits unmatched to MC, i.e. overlaid cosmic data; 4,220 of the 123,000 cached
+events). The cosmic candidates pass the pair step far less often than the neutrino background
+(13.5% vs 42%), the Λ window and the pointing cut about as often (29% vs 32%, 4.2% vs 4.3%),
+and 0 of the 7 left pass the island test. Strictly, EXT < 6.7 at the operating point; taking
+the neutrino-background rate (3.3%) for the island and photon-gap steps gives **0.67 ± 0.38**
+on the first 8.5% of the EXT (to be redone on the full sample). `pfp_true_origin` is
+HyperonProduction's own enum (1 ν primary, **2 Λ daughter**, 3 other, 5 Σ⁰ daughter, −1
+unmatched), not `simb::Origin`; `HypInput.h` had mapped 2 to "cosmic" (unused, now fixed).
+
 ## POT normalisation
 
 Every $S$ and $B$ in this repo is the expected count in the full RHC dataset,
