@@ -213,37 +213,65 @@ pair features), `Island.h` (connectedness test), `SigmaFV.h`, `HypInput.h`.
 **≥ 2 planes**, no precut veto. Chosen from a full-statistics scan (`IslandAna.C`) and
 checked out-of-sample by event parity (`IslandXVal.C`).
 
+Full-statistics background (`lists/bkg_overlay.list`, 14,164 files, 7.0488e21 POT,
+weight 0.1635), GENIE signal; re-measured 2026-10-17 with `IslandOpPoint.C`:
+
 | stage | raw sig | raw bkg | S | B |
 |---|---|---|---|---|
-| AllEvents | 15043 | 725432 | 290.1 | 300821 |
-| SliceID | 7801 | 307435 | 150.4 | 127486 |
-| MuonCandidate | 3043 | 48708 | 58.7 | 20198 |
-| PairCandidate | 921 | 20350 | 17.8 | 8438 |
-| LambdaMass ±20 MeV | 504 | 6519 | 9.72 | 2703 |
-| PointingAlpha | 144 | 267 | 2.78 | 110.7 |
-| **Island (≥2 planes)** | **72** | **10** | **1.39** | **4.15** |
+| AllEvents | 15043 | 1840942 | 290.1 | 301031 |
+| SliceID | 7801 | 776242 | 150.4 | 126931 |
+| MuonCandidate | 3043 | 123000 | 58.7 | 20113 |
+| PairCandidate | 921 | 51238 | 17.8 | 8378 |
+| LambdaMass ±20 MeV | 504 | 16391 | 9.72 | 2680 |
+| PointingAlpha | 144 | 706 | 2.78 | 115.4 |
+| **Island (≥2 planes)** | **72** | **38** | **1.39 ± 0.16** | **6.21 ± 1.01** |
 
-Purity 25%, absolute efficiency 0.48%, and **97.2% of surviving signal has true Lambda
+Purity 18%, absolute efficiency 0.48%, and **97.2% of surviving signal has true Lambda
 flight > 2 cm** against 43% in the BDT chain — the displaced-vertex bias is cured,
-which was the point of the rewrite.
+which was the point of the rewrite. Errors are MC statistics, √Σw².
 
-The **one-plane** point (`islandPlanes=1`) gives S = 1.99, B = 19.5 on 103/47 raw
-events. Prefer it when the background estimate matters more than purity: the two-plane
-background rests on **10 MC events** at 0.41 POT-weight each, so B = 4.15 ± 1.3.
+The **one-plane** point (`islandPlanes=1`) gives S = 1.99 ± 0.20, B = 21.4 ± 1.9 on
+103/131 raw events (purity 8.5%).
+
+**The background extension raised the two-plane B by 1.5x, and the old value was the
+low one.** On the Run 3 list alone (the first 3,491 files, 2.7795e21 POT) the same code
+gives B = 4.15 ± 1.31 on 10 raw events, the number this table used to quote. Every stage
+up to PointingAlpha agrees per POT between the two samples to 1–4%; only the last step
+differs. Given the 38 events, the Run 3 list holds 10 against 15.0 expected from its
+POT share (1.6σ low); at one plane it holds 47 against 51.6. The connectivity tuning and
+the choice of two planes were made on those 10 events, so the low value is partly the
+tuning sample's own fluctuation. The extension alone, which played no part in the tuning,
+gives B = 7.6 ± 1.4 (28 raw). The island-pass rate after PointingAlpha does not depend on
+the era within the statistics (two-plane: Run 3 list 3.7 ± 1.2%, ext Run 1 3.3 ± 1.9%,
+Run 2 8.3 ± 2.1%, Run 3 6.4 ± 1.9%; χ² ≈ 6.6 for 4 dof). Across the 123,000
+MuonCandidate rows no (run, subrun, event) repeats, so the extension is statistically
+independent of the original sample. Odd/even cross-validation (`IslandXVal.C`, f = 15%)
+now has both folds choosing ≥ 2 planes with no precut veto; one fold used to choose the
+veto. Out of sample: S 1.21, B 7.7 (63/47 raw), FoM 0.380.
+
+**With the NuWro signal** (`isl_sig_nuwro.root`, flux-weighted, see
+[The NuWro signal sample](#the-nuwro-signal-sample-run3b-2026-10-15)) the same point gives
+S = 0.147 ± 0.009 on 253 raw events (0.226 ± 0.015, 374 raw, at one plane): 9.4x below
+GENIE. The selection is the same for both generators. NuWro's efficiency from true Σ⁰ to
+two planes is 0.43% against 0.48%, and half of the PointingAlpha survivors pass the
+island test in both. The factor is the normalisation: hyperon FSI, which NuWro has and
+GENIE does not, plus the flux weight.
 
 ### Why S/√(S+B) is the wrong metric here
 
 With a fractional systematic *f* on the background, using S/√(S+B+(fB)²):
 
-| f | BDT chain (S 19.3, B 670) | Lambda-style (S 1.39, B 4.15) |
-|---|---|---|
-| 0% | 0.736 | 0.593 |
-| 7% | 0.359 | 0.590 |
-| 15% | 0.186 | 0.571 |
-| 30% | 0.095 | 0.508 |
+| f | BDT chain (S 19.3, B 670) | Lambda-style (S 1.39, B 6.21) | (was, B 4.15) |
+|---|---|---|---|
+| 0% | 0.736 | 0.504 | 0.593 |
+| 7% | 0.359 | 0.498 | 0.590 |
+| 15% | 0.186 | 0.477 | 0.571 |
+| 30% | 0.095 | 0.417 | 0.508 |
 
-The crossover is at ~7%, and the technote quotes 30–60% on RES/DIS backgrounds. At any
-realistic systematic the high-purity chain wins. Every operating point in this repo was
+The crossover is at ~7% (the BDT column predates the background extension and the
+NuWro retrain), and the technote quotes 30–60% on RES/DIS backgrounds. At any
+realistic systematic the high-purity chain wins, and the full-statistics background
+does not change that. Every operating point in this repo was
 historically chosen with f = 0, which systematically favoured the BDT chains.
 
 ### Island finding — `Island.h`
@@ -281,8 +309,21 @@ caches make everything downstream cheap:
 
 ```bash
 root -l -b -q 'IslandProcess.C("lists/sig_genie.list",0,true,"isl_sig_genie.root",1.9284e-2)'
+root -l -b -q 'IslandProcess.C("lists/bkg_overlay.list",0,false,"isl_bkg.root",1.6352e-1)'
+root -l -b -q 'IslandProcess.C("lists/sig_nuwro.list",0,true,"isl_sig_nuwro.root",8.6055e-4,"<flux_rw>/nuwro_rhc_run3b_reco2_fluxweights.tsv")'
 root -l -b -q 'IslandCache.C("lists/sig_genie.list",0,true,"islcache_sig.root",1.9284e-2)'
+root -l -b -q 'IslandOpPoint.C("isl_sig_genie.root","isl_bkg.root")'   # S, B +- MC stat at both points
 ```
+
+The pass costs ~1 ms/event. The full background (1.84M events) takes ~15 min when the
+list is split 8 ways (`split -n l/8`) and the outputs are `hadd`ed. For NuWro the last
+argument is the per-event flux-weight table (`FluxWeights.h`), and `weight` becomes POT
+scale × flux weight. Current caches (2026-10-17, tuned 2×20 island): `isl_sig_genie.root`,
+`isl_sig_nuwro.root`, `isl_bkg.root` (full list), `isl_bkg_run3.root` (Run 3 list only,
+weight 0.4147). The September caches were made with the old 3×40 connectivity and are
+kept as `isl_*_3x40.root`. `PhotonMichel.C` numbers below were measured on those.
+`islcache_*.root` (raw wire windows, used by `IslandTune.C`) still covers the Run 3 list
+only, so the connectivity tuning has not yet been repeated on the extension.
 
 - `IslandProcess.C` → one row per event at MuonCandidate: per-plane island result, V-fit
   observables, Σ mass, photon and Michel variables, true candidate PDGs, true flight.
@@ -299,12 +340,12 @@ below).
 
 | region | S | B | raw B | S/B |
 |---|---|---|---|---|
-| signal region (blind) | 1.58 | 12.0 | 29 | 13% |
-| mass sideband, +40 to +200 MeV | 0.02 | 10.8 | 26 | 0.2% |
-| α sideband, 0 < cos α < 0.8 | 0.25 | 67.2 | 162 | 0.4% |
-| island-fail region | 1.20 | 98.7 | 238 | 1.2% |
+| signal region (blind) | 1.99 | 21.4 | 131 | 9.3% |
+| mass sideband, +40 to +200 MeV | 0.02 | 14.4 | 88 | 0.1% |
+| α sideband, 0 < cos α < 0.8 | 0.52 | 87.8 | 537 | 0.6% |
+| island-fail region | 0.79 | 94.0 | 575 | 0.8% |
 
-(one-plane point, for statistics). All three are RES/DIS-dominated like the signal
+(one-plane point for statistics; full background and tuned island, 2026-10-17). All three are RES/DIS-dominated like the signal
 region. The α sideband is the workhorse. Two things to know: the mass sideband exists
 only *above* the peak — the p+π invariant mass has a kinematic floor at 1.078 GeV — and
 the signal peak sits in the −20…0 MeV bin because the pion runs on the muon range

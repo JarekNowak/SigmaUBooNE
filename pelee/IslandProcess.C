@@ -25,11 +25,17 @@
 //  For lists/bkg_overlay.list it became 1.6536e-1 on 2026-09-24, when the overlay
 //  extension took that list to 6.9701e21 POT (was 4.1468e-1 at 2.7795e21), and
 //  1.6352e-1 on 2026-10-16, when the residue pass took it to 7.0488e21.
+//  NuWro signal (lists/sig_nuwro.list, 1.3394e24 POT -> 8.6055e-4) is on the OLD NuMI
+//  flux: pass the per-event table as fluxWeights (see FluxWeights.h) and `weight` becomes
+//  potScale x flux weight; the table is applied to signal passes only.
+//        root -l -b -q 'IslandProcess.C("lists/sig_nuwro.list",0,true,"isl_sig_nuwro.root",8.6055e-4,
+//                       "/home/t2k/nowak/MicroBooNE/production/nuwro_prod/flux_rw/nuwro_rhc_run3b_reco2_fluxweights.tsv")'
 // ============================================================================
 #include "HypInput.h"
 #include "SigmaFV.h"
 #include "Island.h"
 #include "LambdaStyle.h"
+#include "FluxWeights.h"
 #include "TChain.h"
 #include "TFile.h"
 #include "TTree.h"
@@ -59,8 +65,11 @@ static const char* STNAME[NST] = { "AllEvents","SliceID","FiducialV","CosmicVeto
 
 void IslandProcess(const char* list = "lists/sig_genie.list", int maxFiles = 0,
                    bool signalOnly = true, const char* outName = "isl_sig_genie.root",
-                   double potScale = 1.0)
+                   double potScale = 1.0, const char* fluxWeights = "")
 {
+  const std::map<unsigned long long,double> FW = signalOnly ? loadFluxWeights(fluxWeights)
+                                                            : std::map<unsigned long long,double>();
+  double sumW=0; long nW=0, nWmiss=0;
   TChain ch("ana/OutputTree");
   std::ifstream in(list); std::string l; int nf = 0;
   while(std::getline(in,l)) if(l.size() && (maxFiles<=0 || nf<maxFiles)){ ch.Add(l.c_str()); nf++; }
@@ -140,6 +149,11 @@ void IslandProcess(const char* list = "lists/sig_genie.list", int maxFiles = 0,
     isSig = (H.h_hyperon_pdg==3212 && H.nu_pdg==-14 && H.ccnc==0);
     if(signalOnly != (bool)isSig) continue;
     if(ie % 20000 == 0){ printf("  ... %lld / %lld\n", ie, N); fflush(stdout); }
+    weight = potScale;
+    if(!FW.empty()){
+      auto it=FW.find(rseKey(H.h_run,H.h_subrun,H.h_event));
+      if(it!=FW.end()){ weight*=it->second; sumW+=it->second; ++nW; } else ++nWmiss;
+    }
 
     stage = ST_ALL; nCut[ST_ALL]++;
     if(haveSlice && fmSlice < 0) continue;                        stage=ST_SLICE;  nCut[ST_SLICE]++;
@@ -265,6 +279,9 @@ void IslandProcess(const char* list = "lists/sig_genie.list", int maxFiles = 0,
     printf("  %-16s %10ld %9.1f\n", STNAME[c], nCut[c], (c>0&&nCut[c-1])?100.0*nCut[c]/nCut[c-1]:100.0);
   printf("  %-16s %10ld %9.1f   (photon + island, hard-cut chain)\n", "Island", nIsland,
          nCut[ST_ALPHA]?100.0*nIsland/nCut[ST_ALPHA]:0.0);
+  if(!FW.empty())
+    printf("  flux weight: %ld matched (<w>=%.4f), %ld missing (left at 1)\n",
+           nW, nW?sumW/nW:0.0, nWmiss);
   printf("  wrote %lld events to %s\n", T.GetEntries(), outName);
   fflush(stdout);
 }
