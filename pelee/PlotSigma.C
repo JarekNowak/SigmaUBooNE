@@ -4,7 +4,7 @@
 //  Reads SigmaHists.root (produced by SigmaSelection.C) and, for every variable
 //  at every cut stage, writes two PNGs:
 //
-//    figs/stack/<Cut>/<Var>.png   POT-scaled stacked MC (Dirt+Background+Hyperons)
+//    figs/stack/<Cut>/<Var>.png   POT-scaled stacked MC (EXT+Dirt+Background+Hyperons)
 //                                 with the signal (Sigma) scaled x N and overlaid.
 //    figs/shape/<Cut>/<Var>.png   unit-normalized shape comparison of all samples.
 //
@@ -66,12 +66,14 @@ static void MakeStackPlot(TFile *f, int v, int c, TCanvas *cv)
   TH1F *hbkg  = GetHist(f, v, 2, c);
   TH1F *hdirt = GetHist(f, v, 3, c);
   TH1F *hdata = GetHist(f, v, 4, c);
+  TH1F *hext  = GetHist(f, v, 5, c);   // absent from files made before EXT was added
   if (!hsig || !hhyp || !hbkg || !hdirt) return;
 
   // background sum (for max + stack ordering)
   double stackMax = 0;
   TH1F *sum = (TH1F *)hdirt->Clone("sum_tmp");
   sum->Add(hbkg); sum->Add(hhyp);
+  if (hext) sum->Add(hext);
   stackMax = sum->GetMaximum();
   delete sum;
 
@@ -84,10 +86,12 @@ static void MakeStackPlot(TFile *f, int v, int c, TCanvas *cv)
   hhyp->SetFillColor(SampleColor[1]);  hhyp->SetLineColor(kBlack);  hhyp->SetLineWidth(1);
   hbkg->SetFillColor(SampleColor[2]);  hbkg->SetLineColor(kBlack);  hbkg->SetLineWidth(1);
   hdirt->SetFillColor(SampleColor[3]); hdirt->SetLineColor(kBlack); hdirt->SetLineWidth(1);
+  if (hext) { hext->SetFillColor(SampleColor[5]); hext->SetLineColor(kBlack); hext->SetLineWidth(1); }
 
   THStack *st = new THStack(Form("st_%d_%d", v, c),
                             VarName[v] + "  -  " + CutName[c] + ";" + VarName[v] +
                             ";Events (1.1526e21 POT)");   // full RHC, matches SigmaSelection.C dataPOT
+  if (hext) st->Add(hext);
   st->Add(hdirt);   // smallest typically at bottom
   st->Add(hbkg);
   st->Add(hhyp);
@@ -123,6 +127,7 @@ static void MakeStackPlot(TFile *f, int v, int c, TCanvas *cv)
   leg->AddEntry(hhyp,  Form("Hyperons  (%.1f)",  hhyp->Integral()),  "f");
   leg->AddEntry(hbkg,  Form("Background  (%.0f)", hbkg->Integral()),  "f");
   leg->AddEntry(hdirt, Form("Dirt  (%.1f)",       hdirt->Integral()), "f");
+  if (hext) leg->AddEntry(hext, Form("EXT  (%.1f)", hext->Integral()), "f");
   if (hdata && hdata->GetEntries() > 0)
     leg->AddEntry(hdata, Form("Data  (%.0f)", hdata->Integral()), "lep");
   leg->Draw();

@@ -5,7 +5,7 @@ formats, different samples, separate inputs and outputs — and can be run side 
 
 | chain | format | signal MC | S | B | purity | role |
 |---|---|---|---|---|---|---|
-| `SigmaSelection.C` + BDT | PeLEE | NuWro run3b | 2.85 | 750 | 0.38% | **the analysis**: the only chain that can see data, EXT and dirt |
+| `SigmaSelection.C` + BDT | PeLEE | NuWro run3b | 2.85 | 841 | 0.34% | **the analysis**: the only chain that can see data, EXT and dirt |
 | `DumpBDTHyp.C` + BDT | hypana | GENIE | 19.3 | 670 | 2.8% | truth studies; candidate purity, backtracking (Run 3 background only) |
 | `SigmaLambdaSel.C` | hypana | GENIE | 1.33 | 3.76 | **26%** | **best performing**; needs wire activity, so MC-only for now (NuWro: S 0.142) |
 
@@ -42,8 +42,8 @@ force a clean rebuild), and macro output is block-buffered, so a crashed run lea
 ## Main analysis — PeLEE ntuples
 
 Sigma0 selection on standard PeLEE ntuples (tree
-`nuselection/NeutrinoSelectionFilter`), NuWro hyperon-enhanced signal + all five RHC
-overlay runs (Run 1+2+4a+4b+4c) + dirt + NuWro fake-data, with a gradient-boosted BDT
+`nuselection/NeutrinoSelectionFilter`), NuWro hyperon-enhanced signal + all six RHC
+overlay runs (Run 1+2+3+4a+4b+4c) + RHC dirt + run3b NuMI EXT + NuWro fake-data, with a gradient-boosted BDT
 as the final discriminant under two-fold cross-validation (folds trained on even/odd
 event numbers, each applied to the events it did not train on). All work is in
 `pelee/`; run from there:
@@ -61,7 +61,8 @@ dumps the training tree; after training, re-running applies the cut.
 Source: `SigmaSelection.C`, `SigmaSelConfig.h`, `SigmaFV.h`, `PidAssign.h`,
 `TrainBDT.C`, `PlotSigma.C`. Samples/POT are an editable block at the top of
 `SigmaSelection.C` (default exposure = full RHC data POT 1.1526e21; background overlay
-POT 9.94482e21). `ScanPeleeBDT.C` relocates the operating point from `BDTInput.root`.
+POT 1.5463e22). `ScanPeleeBDT.C` relocates the operating point from `BDTInput.root`.
+Detector systematics: `./run_detvar.sh` (see "Detector variations" below).
 
 ### Key elements
 
@@ -85,25 +86,89 @@ POT 9.94482e21). `ScanPeleeBDT.C` relocates the operating point from `BDTInput.r
 - **57 BDT inputs**: track PID/kinematics, inter-candidate distances/angles, Lambda &
   Sigma0 masses, shower energy/size, Lambda/gamma vertex-pointing, pi0 (di-photon)
   variables, the second-shower block, and `HasPair`.
-- **Operating point** `BDT_MIN = 0.562`, the out-of-sample FoM peak.
+- **Operating point** `BDT_MIN = 0.616`, the out-of-sample FoM peak of the 2026-10-15
+  training (before EXT existed; with EXT in B the peak moves to 0.690 for +1.2% FoM, flat).
 
 ### Results
 
-Scaled to RHC data POT, with the unbiased two-fold cross-validation:
+Scaled to RHC data POT, with the unbiased two-fold cross-validation (2026-10-17, all
+samples below; B = hyperons + overlay + dirt + EXT):
 
 | Stage | Raw signal | Eff [%] | S | B | Purity [%] | S/sqrt(S+B) |
 |---|---|---|---|---|---|---|
-| MuonCandidate | 3277 | 50.84 | 11.055 | 22927.4 | 0.048 | 0.0730 |
-| NTracksCut | 3226 | 50.05 | 10.883 | 20618.2 | 0.053 | 0.0758 |
-| **BDTG (final)** | **1245** | **19.31** | **4.200** | **777.9** | **0.537** | **0.1502** |
+| MuonCandidate | 11107 | 51.61 | 6.469 | 28978.3 | 0.022 | 0.0380 |
+| NTracksCut | 10931 | 50.79 | 6.370 | 26548.8 | 0.024 | 0.0391 |
+| **BDTG (final)** | **4904** | **22.79** | **2.850** | **840.7** | **0.338** | **0.0981** |
 
-Training ROC-integral 0.848 (fold A) / 0.846 (fold B).
+| B at the BDTG point | before 2026-10-17 | now | raw events now |
+|---|---|---|---|
+| other hyperons (NuWro) | 1.74 | 1.74 | 2982 |
+| overlay | 730.70 | 715.71 | 9966 |
+| dirt | 17.48 (FHC!) | 13.83 | 37 |
+| EXT | — | **109.46** | 146 |
+| total | 749.9 | 840.7 | |
+
+EXT is 13% of the final background; at MuonCandidate it is 6,844 against 20,348 from
+the overlay. Signal is unchanged (only background samples changed).
 
 **Caveat on the operating point.** At the peak a 2% systematic on the background is
-±15.6 events against 4.2 signal, and purity never exceeds ~0.5% anywhere on this
+±17 events against 2.9 signal, and purity never exceeds ~0.5% anywhere on this
 curve. `S/sqrt(S+B)` cannot see that, so the systematic budget — not the counting
 metric — should ultimately set `BDT_MIN`. Rescan with `ScanPeleeBDT.C` after any
 change to the training or the preselection.
+
+### Sample changes of 2026-10-17
+
+- **The dirt was FHC.** `/data/uboone/dirt/neutrinoselection_filt_run1_dirt_overlay.root`
+  (4.21e20, called "Run 1 dirt" here) has the true-E_ν spectra of the FHC dirt samples
+  (χ²/ndf ≈ 1) and not of the RHC ones (χ²/ndf 90–660): ⟨E⟩ ν_μ 1.60 GeV against 2.15
+  for RHC, ν̄_μ 2.28 against 1.72. It is replaced by the RHC dirt of runs 1, 2b, 3b, 4a and
+  4b from `/data/uboone/temp/custom_pelee_ntuples/dirt_overlay/` (1.7409e21 POT). Equal
+  run/subrun/event numbers between dirt samples do NOT mean equal events: they share the
+  overlaid EXT (5 of 139,525 matched events have the same neutrino).
+- **The RHC dirt is on the OLD NuMI flux**, so it takes the same flux map as NuWro. Its
+  `ppfx_cv` profile in true E_ν matches the old-flux overlay in every bin (ν̄_μ 0.886–0.910
+  from 0 to 5 GeV) and not the current-flux overlay (0.904–1.012).
+- **Run 3 overlay was missing**: `Run3_rhc_new_numi_flux_rhc_pandora_ntuple_aa..ae`, 5.5185e21
+  POT, +55% background statistics.
+- **EXT added** (sample 5): `/data/uboone/EXT/neutrinoselection_filt_run3b_beamoff.root`,
+  32,649,128.65 gates (analyser's table), scaled by 2.4477e7 beam-on triggers (the table's
+  23,534,937 per 1.10823e21, taken at 1.1526e21): 0.7497. Data files have **empty**
+  `backtracked_*` vectors whenever there are PFPs, so the ragged-vector guard used to drop
+  every neutrino-slice EXT event; it no longer requires them for data. The 1,655 repeated
+  run/subrun/event in the file (1,619 with identical reco) are dropped.
+- **Overlay signal removed from the background**: truth Σ⁰ CC events in the true FV inside the
+  inclusive overlay (1,038 raw) were counted in B while the NuWro sample models the signal;
+  they are now dropped, as the hypana chain does.
+
+### Detector variations
+
+The run 3 RHC detector-variation set (`custom_pelee_ntuples/detvar/run3`: CV, 2.48e21 POT, and
+LYAttenuation, LYDown, LYRayleigh, Recombination, SCE, WireMod X / YZ / θXZ / θYZ) re-simulates
+the same generated events, but some variations lost files (θYZ keeps 81%). `run_detvar.sh`
+runs `SigmaSelection.C` on each (its `detvarFile` argument: one file, truth signal in the true
+FV vs everything else, a per-event tree `dv`) and `DetVar.C` compares every variation with the
+CV on the events they share, with the CV weight on both sides. These samples are on the old
+flux, so only the ratios are used.
+
+| variation | S var/CV at BDTG | B var/CV at BDTG |
+|---|---|---|
+| LYAttenuation | 1.000 ± 0.000 | 1.001 ± 0.004 |
+| LYDown | 0.979 ± 0.021 | 0.993 ± 0.004 |
+| LYRayleigh | 0.997 ± 0.027 | 0.985 ± 0.006 |
+| Recombination | 1.001 ± 0.076 | 0.975 ± 0.021 |
+| SCE | 0.851 ± 0.099 | 0.999 ± 0.025 |
+| WireMod θXZ | 0.881 ± 0.048 | 1.032 ± 0.018 |
+| WireMod θYZ | 0.865 ± 0.064 | 1.001 ± 0.017 |
+| WireMod X | 0.959 ± 0.057 | 1.004 ± 0.017 |
+| WireMod YZ | 0.958 ± 0.070 | 0.995 ± 0.017 |
+| **quadrature** | **24.2%** (MC noise alone 17.7%) | **4.5%** (MC noise alone 4.8%) |
+
+Background: no variation is resolved; the quadrature sum equals its MC noise, so the
+background detector systematic at the BDT point is ≲5%. That alone is ±38 events against
+S = 2.85. Signal: 64 raw CV signal events at the BDT point, so most of the 24% is MC noise;
+the angular wire modifications (θXZ 2.5σ, θYZ 2.1σ) are the only resolved effects. Earlier
+stages (MuonCandidate) give 7.8% signal / 2.3% background.
 
 ## Truth-study chain — HyperonProduction ("hypana") ntuples
 
@@ -448,8 +513,11 @@ Every $S$ and $B$ in this repo is the expected count in the full RHC dataset,
 | NuWro Σ⁰ signal, `sig_nuwro.list` (2500 files) | hypana | 1.3394e24 | 8.6053e-4 |
 | NuWro Σ⁰ signal, `Hyperons_Nuwro_run3b_WithCR_pelee_2500.root` | PeLEE | 1.3394e24 | 8.6053e-4 |
 | &nbsp;&nbsp;— superseded Run 1-EXT sample, `sig_nuwro_run1ext.list` (2981 files) | hypana | 3.4141e23 | 3.3760e-3 |
-| RHC overlay (Run 1+2+4a+4b+4c) | PeLEE | 9.94482e21 | 1.159e-1 |
-| Run 1 dirt | PeLEE | 4.21274e20 | 2.736 |
+| RHC overlay (Run 1+2+3+4a+4b+4c) | PeLEE | 1.5463292e22 | 7.4538e-2 |
+| RHC dirt (runs 1, 2b, 3b, 4a, 4b; old flux, × flux map) | PeLEE | 1.7409194e21 | 0.6621 |
+| run3b NuMI EXT (beam-off) | PeLEE | 32,649,128.65 gates | 0.7497 |
+| run3b NuMI EXT, ext_unbiased skim (hypana, in production) | hypana | 162,912 gates | 150.2 |
+| &nbsp;&nbsp;— superseded: Run 1 "dirt" (it is FHC) | PeLEE | 4.21274e20 | 2.736 |
 
 **The NuWro scale also carries a flux weight of 0.677** on top of the POT scale: see
 "NuWro is on the old NuMI flux" below. The table lists the POT scale alone.

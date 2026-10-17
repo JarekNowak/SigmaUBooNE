@@ -6,8 +6,9 @@
 //  Structure modeled on ../XSecCCPip/selection/ccpi_selection.C; physics
 //  (candidate finding, cut flow) ported from the archived Sigma.C.
 //
-//  Reads:  NuWro hyperon-enhanced signal, RHC overlay background, dirt, and a
-//          fake-data slot (NuWro hyperon sample, reco-only).
+//  Reads:  NuWro hyperon-enhanced signal, RHC overlay background, RHC dirt, the
+//          run3b NuMI EXT (beam-off) data, and a fake-data slot (NuWro hyperon
+//          sample, reco-only).
 //  Writes: SigmaHists.root  — TH1D[var][sample][cut], one TDirectory per cut,
 //          histogram name = VarName + SampleName + CutName  (PlotSigma.C layout).
 //
@@ -18,6 +19,7 @@
 // ============================================================================
 
 #include "TFile.h"
+#include "TLeaf.h"
 #include "TTree.h"
 #include "TH1D.h"
 #include "TH2D.h"
@@ -32,6 +34,7 @@
 #include <string>
 #include <cmath>
 #include <map>
+#include <unordered_set>
 #include <utility>
 
 R__LOAD_LIBRARY(libTMVA)
@@ -84,13 +87,16 @@ static inline double safeWeight(double w) {
   return (std::isfinite(w) && w >= 0.0 && w <= 30.0) ? w : 1.0;
 }
 
-// ─── Old → current NuMI flux reweighting (NuWro samples only) ────────────────
+// ─── Old → current NuMI flux reweighting (NuWro samples and the dirt) ────────
 //  NuWro's flux files were converted from the OLD NuMI gsimple flux (g4numi v6,
-//  the bugged beamline geometry); the GENIE overlay, the dirt and the data all
-//  use the CURRENT flux (numi_dk2nu_g4_10_4). Every NuWro event therefore has to
-//  be weighted by the official MicroBooNE ratio map "New Flux / Old (bugged)
-//  Flux", binned in (E_nu [GeV], angle [deg] to the NuMI beam axis). Without it
-//  the NuWro yields are too high: <w> = 0.677 over the whole sample.
+//  the bugged beamline geometry); the GENIE overlay and the data use the CURRENT
+//  flux (numi_dk2nu_g4_10_4). Every NuWro event therefore has to be weighted by
+//  the official MicroBooNE ratio map "New Flux / Old (bugged) Flux", binned in
+//  (E_nu [GeV], angle [deg] to the NuMI beam axis). Without it the NuWro yields
+//  are too high: <w> = 0.677 over the whole sample.
+//  The RHC dirt was generated on the OLD flux too, so it takes the same map. Its
+//  ppfx_cv profile in true E_nu is the old-flux overlay's in every bin (anti-numu
+//  0.886-0.910 for 0-5 GeV, against 0.904-1.012 on the current-flux overlay).
 //  Beam axis = 3rd column of the GENIE microboone-numi-v2 rotation.
 //  Source and cross-checks: ~/MicroBooNE/production/nuwro_prod/flux_rw/.
 static const char* FLUXRW_MAP =
@@ -144,14 +150,28 @@ struct FluxRW {
 //  Candidates are still formed when the tracks exist; when they do not the event
 //  is kept, pair-dependent BDT inputs carry sentinels and HasPair flags it. The
 //  two cut-flow rows then repeat the MuonCandidate row by construction.
+//
+//  detvarFile (detector-variation mode): run the chain on ONE GENIE overlay sample
+//  instead of the sample list -- a detector-variation file or its CV. Truth signal
+//  in the true FV becomes sample 0, everything else sample 2, both scaled by the
+//  file's own summed SubRun POT. No BDT dump. The output also holds a per-event
+//  tree `dv` (run, sub, evt, nuE, isSig, cmax, bdtg, w) so that DetVar.C can compare
+//  each variation with the CV on the events they share: the variations are the
+//  same generated events re-simulated, but some lost files.
+//    root -l -b -q 'SigmaSelection.C+("SigmaHists_dv_CV.root",false,true,false,
+//        "/data/uboone/temp/custom_pelee_ntuples/detvar/run3/numi_detvars_pion_ntuples_run3_rhc_CV_slim.root")'
 void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = true,
-                    bool requirePion = true, bool requireProtonPion = false)
+                    bool requirePion = true, bool requireProtonPion = false,
+                    const char* detvarFile = "")
 {
+  const bool detvar = detvarFile && detvarFile[0];
+  if (detvar) writeBDT = false;
   // ── Samples ────────────────────────────────────────────────────────────────
   //  Per-file descriptor.  The signal file feeds two samples (0=Sigma signal,
   //  1=other hyperons) split by the truth flag; the other files map to one
-  //  sample each.  "isData" toggles the CV-weight reset (none are real data
-  //  yet: the fake-data slot is the NuWro hyperon sample, treated reco-only).
+  //  sample each.  "isData" marks real data (the EXT beam-off): CV weights reset,
+  //  no backtracking required, duplicate events dropped. The fake-data slot is
+  //  the NuWro hyperon sample, treated reco-only but still MC.
   struct FileDesc {
     std::string path;
     int   sample;        // fixed sample index, or -1 when split by truth signal
@@ -169,15 +189,29 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     "/data/uboone/prod_nuwro_sigmazero_overlay_numi_rhc_run3b_extunbiased_mcc9/ana/Hyperons_Nuwro_run3b_WithCR_pelee_2500.root";
 
   const std::string NUMI = "/data/uboone/new_numi_flux/";
+  const std::string DIRT = "/data/uboone/temp/custom_pelee_ntuples/dirt_overlay/";
   std::vector<FileDesc> files = {
     { SIG,                                                            -1, true,  false, true }, // 0/1 signal + hyperons
-    // 2 background — ALL RHC overlay runs (Run1+2+4a+4b+4c), summed POT below
+    // 2 background — ALL RHC overlay runs (Run1+2+3+4a+4b+4c), summed POT below
     { NUMI + "Run1_rhc_new_numi_flux_rhc_pandora_ntuple.root",         2, false, false, false },
     { NUMI + "Run2_rhc_new_numi_flux_rhc_pandora_ntuple.root",         2, false, false, false },
     { NUMI + "Run4a_rhc_new_numi_flux_rhc_pandora_ntuple.root",        2, false, false, false },
     { NUMI + "Run4b_rhc_new_numi_flux_rhc_pandora_ntuple.root",        2, false, false, false },
     { NUMI + "Run4c_rhc_new_numi_flux_rhc_pandora_ntuple.root",        2, false, false, false },
-    { "/data/uboone/dirt/neutrinoselection_filt_run1_dirt_overlay.root", 3, false, false, false }, // 3 dirt
+    //   Run 3 (5.518e21 POT, 1.44M events, runs 13697-18960) is split over five files
+    { NUMI + "Run3_rhc_new_numi_flux_rhc_pandora_ntuple_aa.root",      2, false, false, false },
+    { NUMI + "Run3_rhc_new_numi_flux_rhc_pandora_ntuple_ab.root",      2, false, false, false },
+    { NUMI + "Run3_rhc_new_numi_flux_rhc_pandora_ntuple_ac.root",      2, false, false, false },
+    { NUMI + "Run3_rhc_new_numi_flux_rhc_pandora_ntuple_ad.root",      2, false, false, false },
+    { NUMI + "Run3_rhc_new_numi_flux_rhc_pandora_ntuple_ae.root",      2, false, false, false },
+    // 3 dirt — RHC, every run that has a sample (old flux, reweighted, see FluxRW)
+    { DIRT + "numi_dirt_overlay_pion_ntuples_run1_rhc_slim.root",      3, false, false, true },
+    { DIRT + "numi_dirt_overlay_pion_ntuples_run2b_rhc_slim.root",     3, false, false, true },
+    { DIRT + "numi_dirt_overlay_pion_ntuples_run3b_rhc_slim.root",     3, false, false, true },
+    { DIRT + "numi_dirt_overlay_pion_ntuples_run4a_rhc_slim.root",     3, false, false, true },
+    { DIRT + "numi_dirt_overlay_pion_ntuples_run4b_rhc_slim.root",     3, false, false, true },
+    // 5 EXT — NuMI beam-off, run3b (cosmic-only data: no truth, no CV weights)
+    { "/data/uboone/EXT/neutrinoselection_filt_run3b_beamoff.root",   5, false, true,  false },
     // ── Fake-data slot ───────────────────────────────────────────────────────
     //  NuWro hyperon sample reused as the "data" sample (reco cuts only).  A
     //  true generator-closure test needs a DIFFERENT-generator (genie) hyperon
@@ -199,15 +233,45 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   //      and 5.8x fewer than lists/sig_genie.list. See README "Sample bookkeeping".
   //    RHC overlay POT (Run1+2+4a+4b+4c) : 9.94482e21  (/data/uboone/pot.txt RunAll_rhc:
   //      8.99715e20+5.78652e21+7.28265e20+2.37975e21+1.50509e20)
-  //    RHC Run1 dirt POT          : 4.21274e20 (/data/uboone/dirt/pot.txt)
+  //      + Run 3 aa-ae 5.518472e21 (summed SubRun pot; added 2026-10-17, it was
+  //      missing from this list) = 1.5463292e22
+  //    RHC dirt POT (summed SubRun pot): run1 2.304517e20, run2b 1.254292e20,
+  //      run3b 1.042393e21, run4a 7.779458e19, run4b 2.648509e20 = 1.7409194e21.
+  //      Until 2026-10-17 the dirt was /data/uboone/dirt/neutrinoselection_filt_
+  //      run1_dirt_overlay.root (4.21274e20), which is FHC dirt: its true-E_nu
+  //      spectra match the FHC dirt samples (chi2/ndf ~1) and not the RHC ones
+  //      (chi2/ndf 90-660), <E> numu 1.60 GeV against 2.15 for RHC.
   //    Full RHC data POT (target) : 1.1526e21  (/data/uboone/pot.txt RunAll_rhc)
-  //  Background now uses ALL RHC overlay runs (~11x the Run1 POT), so its statistical
-  //  error is no longer Run1-sized.  NOTE: dirt is still Run1-RHC only (scaled up);
-  //  add Run3b/Run4 dirt to fix that too.
+  //  EXT: scaled by beam-on / beam-off hardware triggers. The beam-on triggers are the
+  //  analyser's RHC table (xsec_analyzer configs/ext_trigger_accounting.txt): 23,534,937
+  //  for 1.10823e21, taken at dataPOT with that triggers/POT. The run3b beam-off file
+  //  covers 32,649,128.65 EXT gates (same table). The table's 1.10823e21 is below
+  //  pot.txt's 1.1526e21 for the same runs; adopting it lowers every sample by 3.9%.
+  //  The beam-off file repeats 1,655 run/sub/evt (1,619 with identical reco): data
+  //  files are de-duplicated in the loop.
   const double dataPOT   = 1.1526e21;
   const double signalPOT = 1.3394e24;
-  const double bkgPOT    = 9.94482e21;   // sum of all 5 RHC overlay runs
-  const double dirtPOT   = 4.21274e20;
+  const double bkgPOT    = 1.5463292e22; // sum of all 6 RHC overlay runs
+  const double dirtPOT   = 1.7409194e21;
+  const double dataTrig  = dataPOT * 23534937.0 / 1.10823e21;   // 2.4477e7
+  const double extGates  = 32649128.65;
+
+  //  Detector-variation mode: the one file replaces the list (sample -2 = split
+  //  into signal 0 / background 2), scaled by its own POT.
+  double dvPOT = 0;
+  if (detvar) {
+    files = { { detvarFile, -2, false, false, false } };
+    TFile* fp = TFile::Open(detvarFile);
+    TTree* sr = nullptr;
+    if (fp) fp->GetObject("nuselection/SubRun", sr);
+    if (sr) { float p4 = 0; double p8 = 0;
+      const bool isF = TString(((TLeaf*)sr->GetBranch("pot")->GetListOfLeaves()->At(0))->GetTypeName()) == "Float_t";
+      if (isF) sr->SetBranchAddress("pot", &p4); else sr->SetBranchAddress("pot", &p8);
+      for (Long64_t i = 0; i < sr->GetEntries(); i++) { sr->GetEntry(i); dvPOT += isF ? p4 : p8; } }
+    delete fp;
+    std::cout << "Detector-variation mode: " << detvarFile << "  POT " << dvPOT << "\n";
+    if (dvPOT <= 0) { std::cout << "  no POT -> abort\n"; return; }
+  }
 
   double Scale[Ns];
   Scale[0] = dataPOT / signalPOT;  // Sigma signal
@@ -215,6 +279,8 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   Scale[2] = dataPOT / bkgPOT;     // background overlay
   Scale[3] = dataPOT / dirtPOT;    // dirt
   Scale[4] = dataPOT / signalPOT;  // fake data (NuWro)
+  Scale[5] = dataTrig / extGates;  // EXT beam-off
+  if (detvar) Scale[0] = Scale[2] = dataPOT / dvPOT;
 
   std::cout << "POT scale factors:";
   for (int s = 0; s < Ns; s++) std::cout << "  " << Names[s] << "=" << Scale[s];
@@ -239,11 +305,23 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   }
   fout->cd();
 
+  //  Detector-variation per-event tree (see detvarFile above)
+  TTree* dvT = nullptr;
+  int dvRun = 0, dvSub = 0, dvEvt = 0, dvSig = 0, dvCmax = -1;
+  float dvNuE = 0, dvBdtg = -99, dvW = 0;
+  if (detvar) {
+    dvT = new TTree("dv", "per-event selection, detector-variation mode");
+    dvT->Branch("run", &dvRun);   dvT->Branch("sub", &dvSub);   dvT->Branch("evt", &dvEvt);
+    dvT->Branch("nuE", &dvNuE);   dvT->Branch("isSig", &dvSig); dvT->Branch("cmax", &dvCmax);
+    dvT->Branch("bdtg", &dvBdtg); dvT->Branch("w", &dvW);
+  }
+
   // ── BDT training-tree dump (flat per-event tree at NTracksCut preselection) ──
   //  One row per event reaching NTracksCut (candidates found, before the
   //  discriminating cuts), so the BDT can learn the final separation from the
-  //  full correlated feature set.  TreeS = signal (sample 0), TreeB = all MC
-  //  background (samples 1-3); the data slot (4) is excluded.
+  //  full correlated feature set.  TreeS = signal (sample 0), TreeB = all
+  //  background (samples 1-3 and the EXT, 5; Sample tells them apart); the
+  //  fake-data slot (4) is excluded.
   static const char* BDTV[] = {
     "MuonPID","MuonTrkLength","MuonTrkDistVtx","MuonTrkScore","MuonNHitsY",
     "PionPID","PionTrkLength","PionTrkDistVtx","PionTrkScore","PionNHitsY","PionCaloEnergyY",
@@ -363,7 +441,8 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   //  RawSel[AllEvents][Sigma], i.e. true Sigma0 in FV) independent of weighting.
   double Selected[Nc][Ns] = {{0}};
   long   RawSel[Nc][Ns]   = {{0}};
-  long   nSkippedRagged = 0;
+  long   nSkippedRagged = 0, nDupData = 0, nOverlaySig = 0;
+  std::unordered_set<unsigned long long> seenData;   // run/sub/evt of data events read
 
   // ── Branch variables (declared once, reused across files) ───────────────────
   Int_t   run, sub, evt, nu_pdg, ccnc, interaction;
@@ -451,7 +530,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
       "slnhits","slnunhits","slclustfrac","secondshower_Y_nhit","secondshower_Y_dot",
       "shrsubclusters0","shrsubclusters1","shrsubclusters2"
     };
-    for (auto& b : branches) t->SetBranchStatus(b, 1);
+    for (auto& b : branches) if (t->GetBranch(b)) t->SetBranchStatus(b, 1);
 
     t->SetBranchAddress("run", &run);
     t->SetBranchAddress("sub", &sub);
@@ -479,9 +558,11 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     t->SetBranchAddress("true_nu_vtx_y", &true_nu_vtx_y);
     t->SetBranchAddress("true_nu_vtx_z", &true_nu_vtx_z);
     t->SetBranchAddress("topological_score", &topological_score);
-    t->SetBranchAddress("ppfx_cv", &ppfx_cv);
-    t->SetBranchAddress("weightTune", &weightTune);
-    t->SetBranchAddress("weightSpline", &weightSpline);
+    // CV weights: absent from the data files, where they are reset anyway
+    ppfx_cv = weightTune = weightSpline = 1.f;
+    if (t->GetBranch("ppfx_cv"))      t->SetBranchAddress("ppfx_cv", &ppfx_cv);
+    if (t->GetBranch("weightTune"))   t->SetBranchAddress("weightTune", &weightTune);
+    if (t->GetBranch("weightSpline")) t->SetBranchAddress("weightSpline", &weightSpline);
     t->SetBranchAddress("trk_score_v", &trk_score_v);
     t->SetBranchAddress("trk_len_v", &trk_len_v);
     t->SetBranchAddress("trk_llr_pid_score_v", &trk_llr_pid_score_v);
@@ -538,14 +619,21 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
       size_t npfp = ragged ? 0 : trk_score_v->size();
       for (auto* v : fvecs) if (!v || v->size() != npfp) { ragged = true; break; }
       if (!ragged && (!pfnplanehits_Y || pfnplanehits_Y->size() != npfp)) ragged = true;
-      if (!ragged && (!backtracked_pdg || backtracked_pdg->size() != npfp)) ragged = true;
-      if (!ragged && (!backtracked_overlay_purity || backtracked_overlay_purity->size() != npfp)) ragged = true;
+      //  Data carry no backtracking: both vectors are EMPTY there whenever the event
+      //  has PFPs (all 374,958 neutrino-slice events of the run3b beam-off file), so
+      //  requiring them parallel would silently drop every candidate EXT event.
+      const bool needBT = !fd.isData;
+      if (!ragged && needBT && (!backtracked_pdg || backtracked_pdg->size() != npfp)) ragged = true;
+      if (!ragged && needBT && (!backtracked_overlay_purity || backtracked_overlay_purity->size() != npfp)) ragged = true;
       if (ragged) { nSkippedRagged++; continue; }
+      if (fd.isData && !seenData.insert(((unsigned long long)run << 40) |
+                                        ((unsigned long long)sub << 20) |
+                                        (unsigned long long)evt).second) { nDupData++; continue; }
 
       // ── CV weight (MC); reset for the data slot ──────────────────────────────
-      //  NuWro samples carry an extra factor putting them on the current NuMI
-      //  flux (fd.fluxRW); it is applied to the fake-data slot too, since that
-      //  slot stands in for data and data is on the current flux.
+      //  NuWro samples and the dirt carry an extra factor putting them on the
+      //  current NuMI flux (fd.fluxRW); it is applied to the fake-data slot too,
+      //  since that slot stands in for data and data is on the current flux.
       double pf = ppfx_cv, wt = weightTune, ws = weightSpline;
       if (fd.isData) { pf = wt = ws = 1.0; }
       const double w_flux = fd.fluxRW
@@ -619,11 +707,20 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
 
       // ── Sample assignment ────────────────────────────────────────────────────
       int s = (fd.sample >= 0) ? fd.sample : (IsSignal ? 0 : 1);
+      if (fd.sample == -2)    // detector variation: signal in the true FV, or background
+        s = (IsSignal && SigmaFV::isFiducial(true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z)) ? 0 : 2;
       const double W = Scale[s] * w_cv;
 
       // ── Truth fiducial cut (signal/hyperon MC only) ──────────────────────────
       if (fd.truthFV &&
           !SigmaFV::isFiducial(true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z)) continue;
+
+      //  The inclusive overlay contains GENIE signal events too. The signal is
+      //  modelled by the dedicated sample, so they are not background: drop them,
+      //  as the hypana chain does (IslandProcess.C, isSig). Signal outside the true
+      //  FV stays, as background.
+      if (s == 2 && fd.sample == 2 && IsSignal &&
+          SigmaFV::isFiducial(true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z)) { nOverlaySig++; continue; }
 
       // ── Reco vertex + fiducial flag ──────────────────────────────────────────
       TVector3 vtx(reco_nu_vtx_sce_x, reco_nu_vtx_sce_y, reco_nu_vtx_sce_z);
@@ -890,11 +987,15 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
           tScore  = bdtg;            tSample = s;
           tNuPdg  = nu_pdg;          tCcnc   = ccnc;       tInter = interaction;
           tNuE    = nu_e;            tHasPi0 = hasPi0 ? 1 : 0;
-          tMuPdg  = backtracked_pdg->at(muon_index);
-          tPrPdg  = (proton_index>-1) ? backtracked_pdg->at(proton_index) : 0;
-          tPiPdg  = (pion_index>-1) ? backtracked_pdg->at(pion_index) : 0;
-          tShrPdg = backtracked_pdg->at(shower1_index);
-          tCosmic = (backtracked_overlay_purity->at(muon_index) > 0.5) ? 1 : 0;
+          if (fd.isData) {               // EXT: no backtracking, and all of it is cosmic
+            tMuPdg = tPrPdg = tPiPdg = tShrPdg = 0; tCosmic = 1;
+          } else {
+            tMuPdg  = backtracked_pdg->at(muon_index);
+            tPrPdg  = (proton_index>-1) ? backtracked_pdg->at(proton_index) : 0;
+            tPiPdg  = (pion_index>-1) ? backtracked_pdg->at(pion_index) : 0;
+            tShrPdg = backtracked_pdg->at(shower1_index);
+            tCosmic = (backtracked_overlay_purity->at(muon_index) > 0.5) ? 1 : 0;
+          }
 
           // ── all-PFP block ───────────────────────────────────────────────────
           for (int k = 0; k < NSLOT; k++) for (int j = 0; j < NPV; j++) pfpv[k][j] = -1.0f;
@@ -947,6 +1048,10 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
 
       int cmax = -1;
       for (int c = 0; c < Nc; c++) { if (Cuts[c]) cmax = c; else break; }
+      if (dvT) {
+        dvRun = run; dvSub = sub; dvEvt = evt; dvNuE = nu_e; dvSig = (s == 0);
+        dvCmax = cmax; dvBdtg = bdtg; dvW = W; dvT->Fill();
+      }
       if (cmax < 0) continue;
 
       for (int c = 0; c <= cmax; c++) { Selected[c][s] += W; RawSel[c][s]++; }
@@ -1032,11 +1137,13 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     std::cout << "\n";
   }
   std::cout << "===============================================================\n";
-  std::cout << "Skipped ragged entries: " << nSkippedRagged << "\n";
+  std::cout << "Skipped ragged entries: " << nSkippedRagged
+            << ", duplicate data events: " << nDupData
+            << ", overlay signal events removed from the background: " << nOverlaySig << "\n";
 
   // ── Signal-efficiency / significance diagnostics ────────────────────────────
   //  eff   = raw signal events at cut c / raw signal at AllEvents (true Sig in FV)
-  //  S,B   = POT-weighted signal / (hyperons+background+dirt) yields
+  //  S,B   = POT-weighted signal / (hyperons+background+dirt+EXT) yields
   //  S/√(S+B) is the figure of merit we optimize (keep signal, control bkg).
   const long   rawDenom = RawSel[0][0];
   std::cout << "\n=============== Signal efficiency & significance ===============\n";
@@ -1049,7 +1156,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
             << std::setw(12) << "S/sqrt(S+B)" << "\n";
   for (int c = 0; c < Nc; c++) {
     const double S = Selected[c][0];
-    const double B = Selected[c][1] + Selected[c][2] + Selected[c][3];
+    const double B = Selected[c][1] + Selected[c][2] + Selected[c][3] + Selected[c][5];
     const double eff = rawDenom > 0 ? 100.0 * RawSel[c][0] / rawDenom : 0.0;
     const double pur = (S + B) > 0 ? 100.0 * S / (S + B) : 0.0;
     const double sig = (S + B) > 0 ? S / std::sqrt(S + B) : 0.0;

@@ -19,13 +19,14 @@
 
 namespace SigmaCfg {
 
-  const int Ns = 5;   // samples
+  const int Ns = 6;   // samples
   const int Nc = 9;   // cumulative cut stages
   const int Nv = 53;  // variables
 
-  // --- Sample labels (index order matches SigmaSelection.C: 0=signal .. 4=data) ---
+  // --- Sample labels (index order matches SigmaSelection.C: 0=signal .. 4=data,
+  //     5=EXT beam-off, appended so that no earlier index moves) ---
   static const TString Names[Ns] = {
-    "Sigma", "Hyperons", "Background", "Dirt", "Data"
+    "Sigma", "Hyperons", "Background", "Dirt", "Data", "EXT"
   };
 
   // --- Cut stage labels (real cuts only; cumulative) ---
@@ -64,9 +65,9 @@ namespace SigmaCfg {
   // --- Per-sample plot colors ---
   //   Sigma  : red line (signal, scaled up in stacked plots)
   //   Hyper. : green fill, Background : blue fill, Dirt : gray fill
-  //   Data   : black markers
+  //   Data   : black markers, EXT : orange fill
   static const int SampleColor[Ns] = {
-    kRed + 1, kGreen + 2, kAzure + 1, kGray + 1, kBlack
+    kRed + 1, kGreen + 2, kAzure + 1, kGray + 1, kBlack, kOrange + 1
   };
 
   // --- Per-variable binning. Returns nbins, [lo,hi), and log-y flag. ---
