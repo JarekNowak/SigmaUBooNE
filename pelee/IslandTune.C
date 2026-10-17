@@ -21,6 +21,7 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <functional>
 
 struct Hit { int w; float t, a; };
 struct Ev { int isSig, evt; double w, mass, cosA, len, flight; int seedW[3][3]; float seedT[3]; std::vector<Hit> h[3]; };
@@ -152,5 +153,51 @@ void IslandPoint(const char* sigFile, const char* bkgFile, int cdw, double cdt, 
   const double edges[]={0,1,2,3,5,10,1e9}; printf("  flight[cm]   n   >=1     >=2\n");
   for(int b=0;b<6;++b){ long n=0,n1=0,n2=0; for(size_t i=0;i<S.size();++i){ const Ev&e=S[i]; if(!(std::fabs(e.mass-1.115683)<win&&e.cosA>cmin&&e.len>0.5)) continue; if(!(e.flight>=edges[b]&&e.flight<edges[b+1])) continue; n++; if(np[i]>=1)n1++; if(np[i]>=2)n2++; }
     printf("  %4.0f-%-4.0f %4ld %6.1f%% %6.1f%%\n", edges[b], edges[b+1]>1e8?99:edges[b+1], n, n?100.0*n1/n:0, n?100.0*n2/n:0); }
+  fflush(stdout);
+}
+
+// Connectivity scan at the N-plane point with an honest split. The adopted 2x20 was
+// chosen on the Run 3 list (bkgTrain); the RHC extension (bkgTest) played no part in
+// that choice, so its column is out of sample. Each background cache must be weighted
+// to data POT on its own; the full-sample B is their POT-weighted mean. An optional
+// second signal cache (NuWro) is shown as a pass rate only -- its normalisation is a
+// generator choice, see the README.
+//  Run:  root -l -b -q -e '.L IslandTune.C' -e 'IslandScan2("islcache_sig.root","islcache_bkg.root","islcache_bkg_ext.root","islcache_sig_nuwro.root")'
+void IslandScan2(const char* sigFile, const char* bkgTrain, const char* bkgTest, const char* sig2File="",
+                 double potTrain=2.7795e21, double potTest=4.2693e21, int planes=2,
+                 double win=0.020, double cmin=0.95)
+{
+  auto S=load(sigFile), BT=load(bkgTrain), BX=load(bkgTest);
+  std::vector<Ev> S2; if(sig2File && *sig2File) S2=load(sig2File);
+  const double fT=potTrain/(potTrain+potTest), fX=potTest/(potTrain+potTest);
+  auto atOp=[&](const Ev& e){ return std::fabs(e.mass-1.115683)<win && e.cosA>cmin && e.len>0.5; };
+  long nS2op=0; for(auto&e:S2) if(atOp(e)) nS2op++;
+  printf("\n  >= %d planes; cache sizes: sig %zu, train bkg %zu, test bkg %zu, sig2 %zu (%ld at the op point)\n",
+         planes, S.size(), BT.size(), BX.size(), S2.size(), nS2op);
+  printf("  %-12s %12s | %16s %16s %16s | %21s | %s\n", "connectivity", "S (raw)", "B train (raw)", "B test (raw)",
+         "B full (raw)", "FoM15 train/test/full", "sig2 pass");
+  struct Row { int cdw; double cdt, s, bt, bx, ft, fx; };
+  std::vector<Row> rows;
+  for(int cdw : {1,2,3,4,6}) for(double cdt : {10.,20.,30.,40.,60.,80.}){
+    Island::Params P; P.cdw=cdw; P.cdt=cdt;
+    Res rT=eval(S,BT,P,win,cmin), rX=eval(S,BX,P,win,cmin);
+    const double s = planes>=2 ? rT.S2 : rT.S1;  const long ns = planes>=2 ? rT.nS2 : rT.nS1;
+    const double bt= planes>=2 ? rT.B2 : rT.B1;  const long nbt= planes>=2 ? rT.nB2 : rT.nB1;
+    const double bx= planes>=2 ? rX.B2 : rX.B1;  const long nbx= planes>=2 ? rX.nB2 : rX.nB1;
+    const double bf= fT*bt + fX*bx;
+    const double ebt= nbt? bt/std::sqrt((double)nbt):0, ebx= nbx? bx/std::sqrt((double)nbx):0;
+    const double ebf= std::sqrt(fT*fT*ebt*ebt + fX*fX*ebx*ebx);
+    long n2=0; for(auto&e:S2){ if(!atOp(e)) continue; int np=0;
+      for(int p=0;p<3;++p){ if(e.h[p].empty()) continue; bool ok; if(planeTest(e.h[p],e.seedW[p],e.seedT,P,ok)) np++; }
+      if(np>=planes) n2++; }
+    rows.push_back({cdw,cdt,s,bt,bx,fom(s,bt),fom(s,bx)});
+    printf("  cdw %d cdt %2.0f %6.2f (%3ld) | %6.2f+-%4.2f (%3ld) %6.2f+-%4.2f (%3ld) %6.2f+-%4.2f (%3ld) | %.3f / %.3f / %.3f | %5.1f%%\n",
+           cdw, cdt, s, ns, bt, ebt, nbt, bx, ebx, nbx, bf, ebf, nbt+nbx, fom(s,bt), fom(s,bx), fom(s,bf),
+           nS2op? 100.0*n2/nS2op : 0.0);
+  }
+  auto bestT=std::max_element(rows.begin(),rows.end(),[](const Row&a,const Row&b){ return a.ft<b.ft; });
+  auto bestX=std::max_element(rows.begin(),rows.end(),[](const Row&a,const Row&b){ return a.fx<b.fx; });
+  printf("\n  chosen on train: cdw %d cdt %.0f  (train FoM %.3f -> test FoM %.3f)\n", bestT->cdw, bestT->cdt, bestT->ft, bestT->fx);
+  printf("  best on test   : cdw %d cdt %.0f  (test FoM %.3f)\n", bestX->cdw, bestX->cdt, bestX->fx);
   fflush(stdout);
 }

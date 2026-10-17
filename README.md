@@ -302,6 +302,28 @@ against 3.7×). Minimum cluster size, seed radius and an ADC occupancy threshold
 only remove signal. Do not trust a grid optimiser here: its own pick (cdw 6, minclust
 20, seed radius 5) fails the parity check (0.393 vs 0.264) and is overfit to 11 events.
 
+**2×20 survives an out-of-sample test (2026-10-17).** The tuning used the Run 3 list
+only, so the RHC extension was cached separately (`islcache_bkg_ext.root`, 2,261
+pre-island events against 2,298 expected from the Run 3 rate) and the connectivity grid
+was re-scanned at the two-plane point, choosing on the Run 3 list and scoring on the
+extension (`IslandScan2()` in `IslandTune.C`, log `islscan2.log`):
+
+| connectivity | S (raw) | B Run 3 (raw) | B extension (raw) | FoM₁₅ Run 3 / ext |
+|---|---|---|---|---|
+| 1 × 20 | 1.41 (73) | 4.56 (11) | 8.10 (30) | 0.555 / 0.425 |
+| **2 × 20** | **1.39 (72)** | **4.15 (10)** | **7.56 (28)** | **0.571 / 0.434** |
+| 2 × 30 | 1.29 (67) | 4.56 (11) | 6.48 (24) | 0.514 / 0.438 |
+| 3 × 30 | 1.23 (64) | 4.98 (12) | 5.94 (22) | 0.474 / 0.437 |
+| 3 × 40 (old) | 1.04 (54) | 3.32 (8) | 5.67 (21) | 0.485 / 0.382 |
+
+The extension's FoM is a plateau (0.425–0.438 over 1–3 wires × 20–30 ticks) and 2×20
+is 0.004 from its top, so the choice was not overfit. The drop from 0.571 to 0.434 is
+the same at every grid point: the Run 3 list is low across the whole grid because its
+events are shared between neighbouring settings. It is a property of that sample, not
+of the parameter choice. The one-plane scan (`islscan1.log`) is flat on the extension
+as well (0.33–0.36). The two-plane signal pass rate is the same for both generators:
+50.5% of NuWro (`islcache_sig_nuwro.root`, flux-weighted) against 50% of GENIE.
+
 ### Tooling
 
 The island test reads raw wire windows, which is what makes hypana loops slow. Two
@@ -322,8 +344,11 @@ scale × flux weight. Current caches (2026-10-17, tuned 2×20 island): `isl_sig_
 `isl_sig_nuwro.root`, `isl_bkg.root` (full list), `isl_bkg_run3.root` (Run 3 list only,
 weight 0.4147). The September caches were made with the old 3×40 connectivity and are
 kept as `isl_*_3x40.root`. `PhotonMichel.C` numbers below were measured on those.
-`islcache_*.root` (raw wire windows, used by `IslandTune.C`) still covers the Run 3 list
-only, so the connectivity tuning has not yet been repeated on the extension.
+`islcache_*.root` holds the raw wire windows used by `IslandTune.C`: `islcache_sig.root`
+(GENIE), `islcache_sig_nuwro.root` (flux-weighted), `islcache_bkg.root` (Run 3 list,
+weight 0.4147) and `islcache_bkg_ext.root` (extension, files 3492–14164, weight 0.26998).
+Each is weighted to data on its own POT. `IslandScan2()` combines them, and
+`IslandHandles.C` evaluates the Michel and gap handles on the `isl_*` caches.
 
 - `IslandProcess.C` → one row per event at MuonCandidate: per-plane island result, V-fit
   observables, Σ mass, photon and Michel variables, true candidate PDGs, true flight.
@@ -351,7 +376,7 @@ only *above* the peak — the p+π invariant mass has a kinematic floor at 1.078
 the signal peak sits in the −20…0 MeV bin because the pion runs on the muon range
 hypothesis.
 
-### Two optional handles (`applyMichel`, `photonGap`; default off)
+### Two optional handles (`applyMichel`, `photonGap`; default off -- gap recommended on)
 
 - **Michel tag.** The signal muon is a μ⁺ 100% of the time; the surviving background
   muon is a true **μ⁻ 78%** (wrong-sign ν_μ CC in RHC). A μ⁺ always decays, a μ⁻
@@ -363,8 +388,29 @@ hypothesis.
   vertex against 3.5% of signal; requiring > 2 cm keeps 95% of signal and removes 21%
   of background.
 
-Both improve the one-plane point (together: S 1.18, B 5.0, purity 19%, +18% FoM) and
-neither is measurable on the two-plane point, where the background is 8–10 MC events.
+Both were measured on the Run 3 list in September (one-plane point, old 3×40 island)
+and looked unmeasurable on the two-plane point, where that list has 8–10 MC events.
+**With the full background the photon gap is a real gain at two planes**
+(`IslandHandles.C`, log `islhandles.log`; the extension is out of sample because the
+2 cm threshold was fixed in September):
+
+| two planes | S GENIE (raw) | S NuWro (raw) | B Run 3 (raw) | B ext (raw) | B full (raw) | FoM₁₅ ext / full |
+|---|---|---|---|---|---|---|
+| no handle | 1.39 (72) | 0.147 (253) | 4.15 (10) | 7.56 (28) | 6.21 (38) | 0.434 / 0.477 |
+| Michel tag | 1.08 (56) | 0.107 (184) | 2.07 (5) | 4.32 (16) | 3.43 (21) | 0.448 / 0.494 |
+| **photon gap > 2 cm** | **1.33 (69)** | **0.142 (245)** | 3.32 (8) | **4.05 (15)** | **3.76 (23)** | **0.555 / 0.572** |
+| Michel + gap | 1.02 (53) | 0.104 (179) | 2.07 (5) | 2.97 (11) | 2.62 (16) | 0.499 / 0.525 |
+
+The gap keeps 96% of GENIE and 97% of NuWro signal and halves the extension's background
+(+28% FoM out of sample, purity 26%). On the Run 3 list it removed 2 of 10 events where
+the pooled rate predicts 3.9, a 1.3σ fluctuation that hid it. The events it removes are
+mostly not photons: at two planes 11 of 15 are hadrons (5 p, 4 π±, 1 μ, 1 e)
+reconstructed as a shower at the vertex. The threshold sits on a plateau
+(FoM 0.54–0.60 from 1 to 8 cm). 5 cm scores highest on 14 events but costs 18% of
+signal, so the pre-set 2 cm is kept. At one plane the gap gives 0.330 → 0.406 on the
+extension.
+The **Michel tag** is marginal on its own (+3% out of sample, costing 22% of signal)
+and lowers the FoM when added to the gap, so it stays off.
 Σ-mass windows were tested and cost more signal than they are worth.
 
 **The photon is otherwise unused in this chain** — `NShowers` already requires a

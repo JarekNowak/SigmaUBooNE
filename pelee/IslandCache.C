@@ -9,11 +9,14 @@
 //
 //  Run:  root -l -b -q 'IslandCache.C("lists/sig_genie.list",0,true,"islcache_sig.root",1.9284e-2)'
 //        root -l -b -q 'IslandCache.C("lists/bkg_overlay.list",0,false,"islcache_bkg.root",1.6352e-1)'
+//  NuWro signal: potScale 8.6055e-4 plus the per-event flux-weight table (FluxWeights.h)
+//  as the last argument, exactly as for IslandProcess.C.
 // ============================================================================
 #include "HypInput.h"
 #include "SigmaFV.h"
 #include "Island.h"
 #include "LambdaStyle.h"
+#include "FluxWeights.h"
 #include "TChain.h"
 #include "TInterpreter.h"
 #include "TFile.h"
@@ -30,8 +33,10 @@ static const double TRK_SHR_SPLIT=0.5, TOPO_MIN=0.20;
 static const double PRE_WIN=0.060, PRE_COS=0.80, PRE_LEN=0.5;
 
 void IslandCache(const char* list="lists/sig_genie.list", int maxFiles=0, bool signalOnly=true,
-                 const char* outName="islcache_sig.root", double potScale=1.0)
+                 const char* outName="islcache_sig.root", double potScale=1.0, const char* fluxWeights="")
 {
+  const std::map<unsigned long long,double> FW = signalOnly ? loadFluxWeights(fluxWeights)
+                                                            : std::map<unsigned long long,double>();
   // vector<vector<int>> has no compiled dictionary in this ROOT; without it the
   // per-hit truth pdg branch reads back corrupted.
   gInterpreter->GenerateDictionary("vector<vector<int> >","vector");
@@ -70,6 +75,8 @@ void IslandCache(const char* list="lists/sig_genie.list", int maxFiles=0, bool s
     ch.GetEntry(ie); H.convert();
     isSig=(H.h_hyperon_pdg==3212 && H.nu_pdg==-14 && H.ccnc==0);
     if(signalOnly!=(bool)isSig) continue;
+    weight=potScale;
+    if(!FW.empty()){ auto it=FW.find(rseKey(H.h_run,H.h_subrun,H.h_event)); if(it!=FW.end()) weight*=it->second; }
     if(haveSlice && fmSlice<0) continue;
     if(!SigmaFV::isFiducial(H.vtx_x,H.vtx_y,H.vtx_z)) continue;
     if(topo<TOPO_MIN) continue;
