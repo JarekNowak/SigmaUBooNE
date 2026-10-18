@@ -61,20 +61,22 @@ static const double MUON_MOM_MIN_TRUE = 0.15;   // GeV/c
 static const double TOPO_MIN       = 0.20;   // topological_score cosmic/ν veto
 // BDTG operating point: the out-of-sample FoM peak, located by ScanPeleeBDT.C on
 // BDTInput.root (scores are cross-validated, even->foldB / odd->foldA).
-// Retrained 2026-10-15 on the run3b NuWro signal (TreeS 3226 -> 10931):
-//   preselection      S= 6.370  B=20613.9  pur=0.031%  FoM=0.0444
-//   old point -0.90   S= 6.324  B=16376.0  pur=0.039%  FoM=0.0494
-//   peak     +0.616   S= 2.850  B=  749.9  pur=0.379%  FoM=0.1039   <- this
-// The previous weights on this same sample peaked at +0.502 with S=2.639, B=967.1,
-// FoM=0.0847, so the retraining buys +23% FoM: at matched signal efficiency it
-// rejects ~32% more background (AUC 0.8333 -> 0.8656), and at the peak it keeps
-// MORE signal (44.7% of preselection against 41.4%) with LESS background.
-// S is lower than the 4.200 the retired Run 1-EXT sample gave purely through
-// normalisation (x0.677 NuMI flux weight, x0.864 lower Sigma0 rate), not selection.
-// CAUTION: at the peak a 2% systematic on the background is +-15.0 events against
-// 2.9 signal, so the systematic budget -- not S/sqrt(S+B) -- should ultimately set
+// Retrained 2026-10-18 with the run3b EXT in the background tree (25% of its weight)
+// and on 95% of each fold instead of TMVA's default half (TrainBDT.C testFrac):
+//   preselection      S= 6.370  B=26548.8  pur=0.024%  FoM=0.0391   (B incl. EXT)
+//   peak     +0.759   S= 2.112  B=  382.5  pur=0.549%  FoM=0.1077   <- this
+//   (scanned at every event score; ScanPeleeBDT.C's 0.002 grid gives +0.756, FoM 0.1075 -- flat)
+// The 2026-10-15 weights (no EXT, half-fold training) peak on the same events at +0.690
+// with S=2.330, B=547.6, FoM=0.0993: EXT in training +5%, the full fold +4% (means over
+// three split seeds; this seed gives 0.1049 and 0.1077). 0.759 is
+// also the peak with a 2% background systematic (FoM 0.1003).
+// History: 2026-10-15 run3b NuWro retrain, +0.616 (S 2.850, B 749.9 before EXT), from
+// +0.502 with the earlier weights; the retired Run 1-EXT sample gave S 4.200 only
+// through normalisation (x0.677 NuMI flux weight, x0.864 lower Sigma0 rate).
+// CAUTION: at the peak a 2% systematic on the background is +-7.6 events against
+// 2.1 signal, so the systematic budget -- not S/sqrt(S+B) -- should ultimately set
 // this. Rescan after any change to the training or the preselection.
-static const double BDT_MIN        = 0.616;
+static const double BDT_MIN        = 0.759;
 static const double M_PROTON       = 0.938272;  // Λ/Σ⁰ mass reconstruction
 static const double M_PION         = 0.139570;
 // Combined proton/pion discriminant D = LLR/σ_LLR + (χ²_p−χ²_π)/σ_Δχ² (high=pion);

@@ -5,7 +5,7 @@ formats, different samples, separate inputs and outputs — and can be run side 
 
 | chain | format | signal MC | S | B | purity | role |
 |---|---|---|---|---|---|---|
-| `SigmaSelection.C` + BDT | PeLEE | NuWro run3b | 2.85 | 841 | 0.34% | **the analysis**: the only chain that can see data, EXT and dirt |
+| `SigmaSelection.C` + BDT | PeLEE | NuWro run3b | 2.11 | 382 | 0.55% | **the analysis**: the only chain that can see data, EXT and dirt |
 | `DumpBDTHyp.C` + BDT | hypana | GENIE | 19.3 | 670 | 2.8% | truth studies; candidate purity, backtracking (Run 3 background only) |
 | `SigmaLambdaSel.C` | hypana | GENIE | 1.33 | 4.38 (3.76 MC + 0.62 EXT) | **23%** | **best performing**; needs wire activity: MC + factorised EXT, no data or dirt yet (NuWro: S 0.142) |
 
@@ -86,36 +86,76 @@ Detector systematics: `./run_detvar.sh` (see "Detector variations" below).
 - **57 BDT inputs**: track PID/kinematics, inter-candidate distances/angles, Lambda &
   Sigma0 masses, shower energy/size, Lambda/gamma vertex-pointing, pi0 (di-photon)
   variables, the second-shower block, and `HasPair`.
-- **Operating point** `BDT_MIN = 0.616`, the out-of-sample FoM peak of the 2026-10-15
-  training (before EXT existed; with EXT in B the peak moves to 0.690 for +1.2% FoM, flat).
+- **Operating point** `BDT_MIN = 0.759`, the out-of-sample FoM peak of the 2026-10-18
+  training (EXT in the background tree, 95% of each fold; see "BDT retrained with EXT").
+  It is also the peak with a 2% background systematic.
 
 ### Results
 
-Scaled to RHC data POT, with the unbiased two-fold cross-validation (2026-10-17, all
+Scaled to RHC data POT, with the unbiased two-fold cross-validation (2026-10-18, all
 samples below; B = hyperons + overlay + dirt + EXT):
 
 | Stage | Raw signal | Eff [%] | S | B | Purity [%] | S/sqrt(S+B) |
 |---|---|---|---|---|---|---|
 | MuonCandidate | 11107 | 51.61 | 6.469 | 28978.3 | 0.022 | 0.0380 |
 | NTracksCut | 10931 | 50.79 | 6.370 | 26548.8 | 0.024 | 0.0391 |
-| **BDTG (final)** | **4904** | **22.79** | **2.850** | **840.7** | **0.338** | **0.0981** |
+| **BDTG (final)** | **3644** | **16.93** | **2.110** | **382.4** | **0.549** | **0.1076** |
 
-| B at the BDTG point | before 2026-10-17 | now | raw events now |
-|---|---|---|---|
-| other hyperons (NuWro) | 1.74 | 1.74 | 2982 |
-| overlay | 730.70 | 715.71 | 9966 |
-| dirt | 17.48 (FHC!) | 13.83 | 37 |
-| EXT | — | **109.46** | 146 |
-| total | 749.9 | 840.7 | |
+| B at the BDTG point | 2026-10-15 BDT, no EXT in B (0.616) | same BDT, EXT in B (0.616) | **2026-10-18 BDT (0.759)** | raw events now |
+|---|---|---|---|---|
+| other hyperons (NuWro) | 1.74 | 1.74 | 1.06 | 1841 |
+| overlay | 730.70 | 715.71 | 367.86 | 5178 |
+| dirt | 17.48 (FHC!) | 13.83 | 2.26 | 7 |
+| EXT | — | 109.46 | **11.25** | 15 |
+| total | 749.9 | 840.7 | **382.4** | |
+| S | 2.850 | 2.850 | 2.110 | 3644 |
 
-EXT is 13% of the final background; at MuonCandidate it is 6,844 against 20,348 from
-the overlay. Signal is unchanged (only background samples changed).
+Trained with EXT, the BDT removes it almost entirely: 3% of the final background, against 13%
+with the earlier weights. At MuonCandidate EXT is 6,844 against 20,348 from the overlay.
+The 15 raw EXT events at the end carry a 26% statistical error.
 
 **Caveat on the operating point.** At the peak a 2% systematic on the background is
-±17 events against 2.9 signal, and purity never exceeds ~0.5% anywhere on this
-curve. `S/sqrt(S+B)` cannot see that, so the systematic budget — not the counting
-metric — should ultimately set `BDT_MIN`. Rescan with `ScanPeleeBDT.C` after any
+±7.6 events against 2.1 signal, and purity reaches only ~1% even at the tightest
+cuts that keep a usable signal (0.872: S 0.90, B 86). `S/sqrt(S+B)` cannot see that, so
+the systematic budget — not the counting metric — should ultimately set `BDT_MIN`. Rescan with `ScanPeleeBDT.C` after any
 change to the training or the preselection.
+
+### BDT retrained with EXT (2026-10-18)
+
+Two changes to `TrainBDT.C`, measured separately. All numbers below are out of sample:
+every event is scored by the fold that did not train on it. They are evaluated on the
+same `BDTInput.root` events, with B including EXT (`BDTInput.root.oldbdt` holds the earlier
+scores).
+
+1. **EXT in the background tree.** The run3b beam-off events (sample 5, 8,977 raw, 25% of the
+   training background weight) were not in the 2026-10-15 training.
+2. **Train on 95% of each fold.** TMVA's default (`nTrain=0`) splits a fold into train and test
+   halves. The test half only feeds TMVA's own overtraining printout, so each fold trained
+   on 25% of all events. `testFrac` (default now 0.05) keeps 5% for that printout.
+
+| training | split seed | AUC | B/B₀ at 50% sig eff | at 40% | at 20% | FoM peak (cut) | FoM, 2% syst | FoM, 5% syst |
+|---|---|---|---|---|---|---|---|---|
+| 2026-10-15 (no EXT, half fold) | 100 | 0.8894 | 0.0412 | 0.0253 | 0.0067 | 0.0993 (0.690) | 0.0947 | 0.0824 |
+| EXT, half fold | 100 | 0.8966 | 0.0383 | 0.0230 | 0.0059 | 0.1049 (0.762) | 0.0993 | 0.0865 |
+| EXT, half fold | 1 | 0.8959 | 0.0385 | 0.0228 | 0.0061 | 0.1047 | 0.0982 | 0.0859 |
+| EXT, half fold | 2 | 0.8956 | 0.0378 | 0.0236 | 0.0062 | 0.1037 | 0.0981 | 0.0848 |
+| **EXT, 95% of fold (adopted)** | **100** | **0.9000** | **0.0358** | **0.0215** | **0.0061** | **0.1077 (0.759)** | **0.1003** | **0.0878** |
+| EXT, 95% of fold | 1 | 0.9017 | 0.0352 | 0.0209 | 0.0059 | 0.1092 | 0.1015 | 0.0885 |
+| EXT, 95% of fold | 2 | 0.9002 | 0.0354 | 0.0213 | 0.0060 | 0.1084 | 0.1004 | 0.0884 |
+
+- **EXT in training: +5% FoM.** It mostly buys EXT rejection. At 50% signal efficiency 0.9%
+  of the EXT survives, against 2.2% before, while the overlay rate is unchanged (5.2% vs 5.1%).
+- **95% of the fold: +4% FoM** (means over the three seeds), and −7% background at 40–50%
+  signal efficiency. Every full-fold seed beats every half-fold seed on AUC and on background
+  at 40 and 50% efficiency. Seeds that resample half the training events move the FoM by
+  only ±0.5%, so the gain is not training noise. At 20% efficiency the two are equal. This
+  is the signal-statistics limit again: the BDT still improves when it sees more signal.
+- The default seed (100) is adopted, not the best one. `root -l -b -q TrainBDT.C` reproduces
+  its weights exactly, apart from the date and timing lines in the XML. The
+  operating point moves to its peak, 0.759.
+
+Previous weights: `SigmaBDT_{A,B}.preext/` (2026-10-15) and `SigmaBDT_{A,B}.exthalf/` (EXT, half
+fold), both untracked; the 2026-10-15 weights are also in git history.
 
 ### Sample changes of 2026-10-17
 
@@ -151,24 +191,27 @@ FV vs everything else, a per-event tree `dv`) and `DetVar.C` compares every vari
 CV on the events they share, with the CV weight on both sides. These samples are on the old
 flux, so only the ratios are used.
 
+At the 2026-10-18 operating point (BDTG > 0.759):
+
 | variation | S var/CV at BDTG | B var/CV at BDTG |
 |---|---|---|
-| LYAttenuation | 1.000 ± 0.000 | 1.001 ± 0.004 |
-| LYDown | 0.979 ± 0.021 | 0.993 ± 0.004 |
-| LYRayleigh | 0.997 ± 0.027 | 0.985 ± 0.006 |
-| Recombination | 1.001 ± 0.076 | 0.975 ± 0.021 |
-| SCE | 0.851 ± 0.099 | 0.999 ± 0.025 |
-| WireMod θXZ | 0.881 ± 0.048 | 1.032 ± 0.018 |
-| WireMod θYZ | 0.865 ± 0.064 | 1.001 ± 0.017 |
-| WireMod X | 0.959 ± 0.057 | 1.004 ± 0.017 |
-| WireMod YZ | 0.958 ± 0.070 | 0.995 ± 0.017 |
-| **quadrature** | **24.2%** (MC noise alone 17.7%) | **4.5%** (MC noise alone 4.8%) |
+| LYAttenuation | 1.000 ± 0.000 | 0.997 ± 0.005 |
+| LYDown | 0.975 ± 0.025 | 0.985 ± 0.006 |
+| LYRayleigh | 0.980 ± 0.039 | 0.987 ± 0.008 |
+| Recombination | 1.062 ± 0.088 | 0.973 ± 0.030 |
+| SCE | 0.921 ± 0.090 | 0.998 ± 0.034 |
+| WireMod θXZ | 0.907 ± 0.076 | 1.002 ± 0.023 |
+| WireMod θYZ | 0.840 ± 0.078 | 1.026 ± 0.026 |
+| WireMod X | 0.975 ± 0.075 | 1.027 ± 0.026 |
+| WireMod YZ | 0.964 ± 0.095 | 0.986 ± 0.023 |
+| **quadrature** | **21.7%** (MC noise alone 21.1%) | **5.2%** (MC noise alone 6.8%) |
 
-Background: no variation is resolved; the quadrature sum equals its MC noise, so the
-background detector systematic at the BDT point is ≲5%. That alone is ±38 events against
-S = 2.85. Signal: 64 raw CV signal events at the BDT point, so most of the 24% is MC noise;
-the angular wire modifications (θXZ 2.5σ, θYZ 2.1σ) are the only resolved effects. Earlier
-stages (MuonCandidate) give 7.8% signal / 2.3% background.
+No variation is resolved on either side: both quadrature sums equal their MC noise. The CV
+keeps 51 raw signal and 1,260 raw background events at this cut, so the detector
+systematic is bounded at ≲7% on the background (±27 events against S = 2.11) and is not
+measured on the signal. WireMod θYZ (2.0σ) and θXZ (1.2σ) pull the signal down, as they did
+at the previous point (0.616: θXZ 2.5σ, θYZ 2.1σ on 64 raw signal; quadrature 24.2% / 4.5%,
+noise 17.7% / 4.8%). Earlier stages (MuonCandidate) give 7.8% signal / 2.3% background.
 
 ## Truth-study chain — HyperonProduction ("hypana") ntuples
 
