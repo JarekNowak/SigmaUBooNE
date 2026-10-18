@@ -7,7 +7,7 @@ formats, different samples, separate inputs and outputs — and can be run side 
 |---|---|---|---|---|---|---|
 | `SigmaSelection.C` + BDT | PeLEE | NuWro run3b | 2.85 | 841 | 0.34% | **the analysis**: the only chain that can see data, EXT and dirt |
 | `DumpBDTHyp.C` + BDT | hypana | GENIE | 19.3 | 670 | 2.8% | truth studies; candidate purity, backtracking (Run 3 background only) |
-| `SigmaLambdaSel.C` | hypana | GENIE | 1.33 | 3.76 | **26%** | **best performing**; needs wire activity, so MC-only for now (NuWro: S 0.142) |
+| `SigmaLambdaSel.C` | hypana | GENIE | 1.33 | 4.38 (3.76 MC + 0.62 EXT) | **23%** | **best performing**; needs wire activity: MC + factorised EXT, no data or dirt yet (NuWro: S 0.142) |
 
 NuWro yields include hyperon FSI and GENIE yields do not, a model difference of roughly
 4x in the Σ⁰ rate (see "The three signal samples disagree on the absolute Σ⁰ rate"),
@@ -16,8 +16,8 @@ so compare the chains by purity and efficiency, not by S across rows.
 All yields are POT-scaled to the full RHC data exposure 1.1526e21 (see
 [POT normalisation](#pot-normalisation)). The three are not alternatives to choose
 between yet: the Lambda-style chain wins decisively on purity and on robustness to
-background systematics, but until data/EXT/dirt exist in hypana format it cannot
-produce a result on its own.
+background systematics, but until data and dirt exist in hypana format it cannot
+produce a result on its own (EXT now does, factorised: see "EXT (beam-off) — factorised").
 
 ## Environment
 
@@ -500,20 +500,49 @@ and lowers the FoM when added to the gap, so it stays off.
 **The photon is otherwise unused in this chain** — `NShowers` already requires a
 shower, so `requirePhoton` is a no-op. Σ mass and photon energy remain untouched.
 
-### EXT (beam-off) — factorised, interim
+### EXT (beam-off) — factorised
 
-The hypana EXT (`~/MicroBooNE/production/ext_hypana/`, NuMI-EXT-triggered events of the
-swizzled run3b ext_unbiased files) carries **150 data events per event**: an unbiased event is
-one sampled gate, so the whole sample is 0.67% of the data's cosmic statistics. It cannot be
-followed to the operating point (zero events = < 346 at 90% CL). `ExtFactor.C` factorises:
-EXT at MuonCandidate from `isl_ext.root` × the pass fraction to the operating point of the
-overlay's own cosmic-dominated candidates (`CosmicTag.C` → `isl_bkg_cos.root`: >50% of the
-selected slice's hits unmatched to MC, i.e. overlaid cosmic data; 4,220 of the 123,000 cached
-events). The cosmic candidates pass the pair step far less often than the neutrino background
-(13.5% vs 42%), the Λ window and the pointing cut about as often (29% vs 32%, 4.2% vs 4.3%),
-and 0 of the 7 left pass the island test. Strictly, EXT < 6.7 at the operating point; taking
-the neutrino-background rate (3.3%) for the island and photon-gap steps gives **0.67 ± 0.38**
-on the first 8.5% of the EXT (to be redone on the full sample). `pfp_true_origin` is
+The hypana EXT (`~/MicroBooNE/production/ext_hypana/`) is the NuMI-EXT-triggered events of all
+3,349 swizzled run3b ext_unbiased files: 16,570 events, every one through reco2 and hypana
+(2026-10-18). An unbiased event is one sampled gate, so the sample holds 162,912 gates and
+carries **150.25 data events per event**, 0.67% of the data's cosmic statistics. It cannot
+be followed to the operating point: 0 of 76 MuonCandidate events reach the pointing cut, and
+zero means < 346 at 90% CL. `ExtFactor.C` factorises. It takes EXT at MuonCandidate from
+`isl_ext.root` and multiplies by the pass fraction to the operating point of the overlay's
+own cosmic-dominated candidates (`CosmicTag.C` → `isl_bkg_cos.root`: >50% of the selected
+slice's hits unmatched to MC, i.e. overlaid cosmic data; 4,220 of the 123,000 cached events).
+
+| step (cumulative) | EXT raw | EXT P(step\|prev) | MC cosmic raw | MC cosmic P | MC all-bkg P |
+|---|---|---|---|---|---|
+| MuonCandidate | 76 (11,419 ± 1,310) | — | 4,220 | — | — |
+| pair | 8 | 0.105 ± 0.035 | 571 | 0.135 ± 0.005 | 0.42 |
+| Λ mass ± 20 MeV | 3 | 0.38 ± 0.17 | 165 | 0.289 ± 0.019 | 0.32 |
+| decay > 0.5 cm, cos α > 0.95 | 0 | 0 of 3 | 7 | 0.042 ± 0.016 | 0.043 |
+| island ≥ 2 planes + photon gap | 0 | — | 0 of 7 | — | 0.0326 |
+
+**EXT at the operating point is 0.62 ± 0.27.** That uses the cosmic MC as far as the pointing
+cut, the last step with ≥ 5 cosmic events. For the island and photon-gap steps it takes the
+neutrino-background rate (3.3%). The cosmic MC alone gives 0 of 7 there, and without that
+assumption the bound is EXT < 6.2 (90% CL). This uncertainty is the open part of the estimate.
+Its direction is not known. The island test asks for a gap between the vertex and the pair,
+and a cosmic-made fake pair may pass that more easily than a neutrino-background pair, or less.
+
+The real cosmic data test the factorisation wherever they still have events. 8 of 76 EXT
+candidates have a pair. That agrees with the MC cosmic 0.135 (P(≤ 8) = 0.29) and excludes the
+neutrino-background 0.42, which would predict 32 (P = 1.8e-9). 3 of the 8 are in the Λ window
+(MC cosmic 0.29). Taking EXT's own counts instead of the MC cosmic fractions up to the pair
+step gives 0.48, and up to the Λ window 0.62, both inside the error.
+
+With EXT the operating point is **S 1.33, B 4.38** (3.76 MC + 0.62 EXT): purity 26% → 23%,
+FoM at a 15% background systematic 0.572 → 0.537. Dirt is still not in hypana format.
+
+Hypana EXT at MuonCandidate is 11,419 ± 1,310, 1.7× the PeLEE beam-off's 6,844 at the PeLEE
+chain's MuonCandidate. The two chains' MC overlay agrees at that stage (20,113 vs 20,348), so the
+excess is cosmic-specific. It is expected: hypana's `topological_score` is the highest NuScore
+of any slice, not the flash-matched slice's. That raises a cosmic-only event's score far more
+than a neutrino event's, where the neutrino slice usually scores highest anyway. The MC's
+cosmic part uses the same definition, so the selection is consistent within hypana.
+`pfp_true_origin` is
 HyperonProduction's own enum (1 ν primary, **2 Λ daughter**, 3 other, 5 Σ⁰ daughter, −1
 unmatched), not `simb::Origin`; `HypInput.h` had mapped 2 to "cosmic" (unused, now fixed).
 
@@ -533,7 +562,7 @@ Every $S$ and $B$ in this repo is the expected count in the full RHC dataset,
 | RHC overlay (Run 1+2+3+4a+4b+4c) | PeLEE | 1.5463292e22 | 7.4538e-2 |
 | RHC dirt (runs 1, 2b, 3b, 4a, 4b; old flux, × flux map) | PeLEE | 1.7409194e21 | 0.6621 |
 | run3b NuMI EXT (beam-off) | PeLEE | 32,649,128.65 gates | 0.7497 |
-| run3b NuMI EXT, ext_unbiased skim (hypana, in production) | hypana | 162,912 gates | 150.2 |
+| run3b NuMI EXT, ext_unbiased skim (hypana, 386 files, 16,570 events) | hypana | 162,912 gates | 150.25 |
 | &nbsp;&nbsp;— superseded: Run 1 "dirt" (it is FHC) | PeLEE | 4.21274e20 | 2.736 |
 
 **The NuWro scale also carries a flux weight of 0.677** on top of the POT scale: see
