@@ -1,4 +1,4 @@
-// EvalBDT.C -- full efficiency/rejection curve for the trained 49-variable BDT.
+// EvalBDT.C -- full efficiency/rejection curve for the trained 53-variable BDT.
 // Reuses the two-fold weights from AblateBDT.C; every event is scored by the fold it
 // was NOT trained on, so the curve is out-of-sample throughout.
 R__LOAD_LIBRARY(libTMVA)
@@ -45,7 +45,7 @@ void EvalBDT(){
   }
   double S0=0,B0=0; for(double w:sW)S0+=w; for(double w:bW)B0+=w;
   double base=S0/sqrt(S0+B0);
-  printf("\n  ===== BDT working-point curve (49 vars, out-of-sample) =====\n");
+  printf("\n  ===== BDT working-point curve (%d vars, out-of-sample) =====\n",NV);
   printf("  baseline at NTracksCut: S=%.2f  B=%.1f  pur=%.3f%%  FoM=%.4f\n\n",
          S0,B0,100*S0/(S0+B0),base);
   printf("  %7s %8s %10s %9s %9s %9s %9s %8s\n",

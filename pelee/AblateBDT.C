@@ -1,13 +1,22 @@
 // AblateBDT.C -- variable-block ablation for the Sigma0 BDT.
 //
 // Two-fold cross-validation by event parity: train on one fold, evaluate ONLY on the
-// other, so every quoted number is out-of-sample. With 1133 signal events against 49
-// variables (~23 per variable, ~565 per fold) overtraining is still the main risk, so
+// other, so every quoted number is out-of-sample. With 3043 signal events against 53
+// variables (~1450 training events per fold) overtraining is still the main risk, so
 // the BDT is deliberately shallow and regularised.
 //
 // Reported per configuration: out-of-sample AUC, and the POT-weighted figure of merit
 // at a working point holding 90% of the signal -- the retention constraint, rather
 // than the FoM-optimal cut which tends to sit at much lower efficiency.
+//
+// Each fold is split again into TMVA's own train/test samples. That test sample only
+// feeds TMVA's printout -- the numbers here come from the held-out fold -- so testFrac
+// keeps 5% of the fold for it. Until 2026-10-19 it was TMVA's default half, so each fold
+// trained on 25% of all events (the same fix as TrainBDT.C on 2026-10-18).
+//
+// Run:  root -l -b -q AblateBDT.C
+//       root -l -b -q 'AblateBDT.C("BDTHyp.root", 0.5)'      # old split
+//       root -l -b -q 'AblateBDT.C("BDTHyp.root", 0.05, 7)'  # another split seed
 R__LOAD_LIBRARY(libTMVA)
 #include "TMVA/Factory.h"
 #include "TMVA/DataLoader.h"
@@ -44,8 +53,19 @@ static double aucOf(std::vector<double> a,std::vector<double> b){
   double v=t/(double(a.size())*b.size()); return v<0.5?1-v:v;
 }
 
+// TMVA split options for one fold: nTrain=0 halves it; otherwise keep testFrac of it.
+static TString splitOpt(TTree* sig, TTree* bkg, const char* cut, double testFrac, int seed){
+  TString s="nTrain_Signal=0:nTrain_Background=0";
+  if(testFrac<0.5){
+    const Long64_t nS=sig->GetEntries(cut), nB=bkg->GetEntries(cut);
+    const Long64_t tS=(Long64_t)(testFrac*nS), tB=(Long64_t)(testFrac*nB);
+    s=Form("nTrain_Signal=%lld:nTest_Signal=%lld:nTrain_Background=%lld:nTest_Background=%lld",
+           nS-tS,tS,nB-tB,tB); }
+  return s+Form(":SplitMode=Random:SplitSeed=%d:NormMode=NumEvents:!V",seed);
+}
+
 static void runConfig(const char* tag, const std::vector<std::string>& vars,
-                      TTree* sig, TTree* bkg){
+                      TTree* sig, TTree* bkg, double testFrac, int seed){
   std::vector<double> sScore,bScore,sW,bW;
   for(int fold=0; fold<2; ++fold){
     TString ds = TString::Format("abl_%s_f%d",tag,fold);
@@ -63,7 +83,7 @@ static void runConfig(const char* tag, const std::vector<std::string>& vars,
     loader.SetSignalWeightExpression("Weight");
     loader.SetBackgroundWeightExpression("Weight");
     loader.PrepareTrainingAndTestTree(TCut(trainCut),TCut(trainCut),
-      "SplitMode=Random:NormMode=NumEvents:!V");
+      splitOpt(sig,bkg,trainCut,testFrac,seed));
     // shallow + regularised: ~1.1k signal events cannot support a deep forest
     factory.BookMethod(&loader,TMVA::Types::kBDT,"BDTG",
       "!H:!V:NTrees=300:MinNodeSize=5%:MaxDepth=3:BoostType=Grad:Shrinkage=0.05:"
@@ -114,12 +134,13 @@ static void runConfig(const char* tag, const std::vector<std::string>& vars,
   fflush(stdout);
 }
 
-void AblateBDT(){
+void AblateBDT(const char* input="BDTHyp.root", double testFrac=0.05,
+               int seed=100){   // 100 = TMVA default; other seeds measure the training noise
   TMVA::Tools::Instance();
-  TFile* f=TFile::Open("BDTHyp.root");
+  TFile* f=TFile::Open(input);
   TTree* sig=(TTree*)f->Get("TreeS"); TTree* bkg=(TTree*)f->Get("TreeB");
   printf("\n  signal %lld  background %lld\n",sig->GetEntries(),bkg->GetEntries());
-  printf("  two-fold CV, all numbers OUT-OF-SAMPLE\n\n");
+  printf("  two-fold CV, all numbers OUT-OF-SAMPLE; TMVA test share %.2f, seed %d\n\n",testFrac,seed);
   std::vector<std::string> all,noCT,noCTnoShw,ctOnly,core;
   for(int i=0;i<NALL;++i){ std::string v=ALL[i];
     all.push_back(v);
@@ -127,9 +148,9 @@ void AblateBDT(){
     if(!isCT(v)&&!isShower(v)) noCTnoShw.push_back(v);
     if(isCT(v)) ctOnly.push_back(v);
     if(isCore(v)) core.push_back(v); }
-  runConfig("full",        all,       sig,bkg);
-  runConfig("noConnected", noCT,      sig,bkg);
-  runConfig("noCT_noShow", noCTnoShw, sig,bkg);
-  runConfig("connectedOnly",ctOnly,   sig,bkg);
-  runConfig("core8",       core,      sig,bkg);
+  runConfig("full",        all,       sig,bkg,testFrac,seed);
+  runConfig("noConnected", noCT,      sig,bkg,testFrac,seed);
+  runConfig("noCT_noShow", noCTnoShw, sig,bkg,testFrac,seed);
+  runConfig("connectedOnly",ctOnly,   sig,bkg,testFrac,seed);
+  runConfig("core8",       core,      sig,bkg,testFrac,seed);
 }

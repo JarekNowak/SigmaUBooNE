@@ -20,6 +20,11 @@
 // Signal is the same TreeS in all three; only the background changes. The two-fold
 // parity cross-validation is preserved per class, so six trainings in total.
 //
+// Each (class, fold) sample is split again into TMVA's own train/test samples; testFrac
+// keeps 5% of it for TMVA's printout. Until 2026-10-19 it was TMVA's default half, so each
+// BDT trained on 25% of its events (see TrainBDT.C). The per-class result in the README
+// predates that fix.
+//
 //   usage: root -l -b -q TrainBDTSplit.C
 //   output: SigmaBDT_<class>_<A|B>/weights/
 
@@ -57,7 +62,7 @@ static const char* kVars[] = {
 // selects the events this fold trains on. They are ANDed for the background and the
 // fold cut alone is used for the signal, which is common to every class.
 static void trainOne(const char* dataset, const char* foldCut, const char* bkgCut,
-                     TTree* sig, TTree* bkg)
+                     TTree* sig, TTree* bkg, double testFrac)
 {
   TFile* out = TFile::Open(Form("TMVA_%s.root", dataset), "RECREATE");
   TMVA::Factory factory("TMVASigma", out,
@@ -75,8 +80,14 @@ static void trainOne(const char* dataset, const char* foldCut, const char* bkgCu
   // Signal keeps only the fold cut; background additionally keeps its class.
   TCut sigCut = foldCut;
   TCut bkgSel = TCut(foldCut) && TCut(bkgCut);
-  loader.PrepareTrainingAndTestTree(sigCut, bkgSel,
-    "nTrain_Signal=0:nTrain_Background=0:SplitMode=Random:NormMode=NumEvents:!V");
+  TString split = "nTrain_Signal=0:nTrain_Background=0";
+  if (testFrac < 0.5) {
+    const Long64_t nS = sig->GetEntries(sigCut), nB = bkg->GetEntries(bkgSel);
+    const Long64_t tS = (Long64_t)(testFrac * nS), tB = (Long64_t)(testFrac * nB);
+    split = Form("nTrain_Signal=%lld:nTest_Signal=%lld:nTrain_Background=%lld:nTest_Background=%lld",
+                 nS - tS, tS, nB - tB, tB);
+  }
+  loader.PrepareTrainingAndTestTree(sigCut, bkgSel, split + ":SplitMode=Random:NormMode=NumEvents:!V");
 
   // Same hyper-parameters as the single BDT, so any difference in performance is the
   // class split and not a retune. MinNodeSize is left at 3%: with the background now
@@ -92,7 +103,7 @@ static void trainOne(const char* dataset, const char* foldCut, const char* bkgCu
   std::cout << "  " << dataset << " done -> " << dataset << "/weights/\n";
 }
 
-void TrainBDTSplit()
+void TrainBDTSplit(double testFrac = 0.05)
 {
   TMVA::Tools::Instance();
   TFile* in = TFile::Open("BDTInput.root", "READ");
@@ -122,8 +133,8 @@ void TrainBDTSplit()
       std::cout << "  SKIP " << c.name << " (only " << n << " background events)\n";
       continue;
     }
-    trainOne(Form("SigmaBDT_%s_A", c.name), "IsOdd<0.5", c.cut, sig, bkg);
-    trainOne(Form("SigmaBDT_%s_B", c.name), "IsOdd>0.5", c.cut, sig, bkg);
+    trainOne(Form("SigmaBDT_%s_A", c.name), "IsOdd<0.5", c.cut, sig, bkg, testFrac);
+    trainOne(Form("SigmaBDT_%s_B", c.name), "IsOdd>0.5", c.cut, sig, bkg, testFrac);
   }
   std::cout << "Done. Per-class 2-fold weights in SigmaBDT_<class>_<A|B>/.\n";
 }

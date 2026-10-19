@@ -23,6 +23,13 @@ static const double MUON_TRK_SCORE=0.8,MUON_TRK_DIST=20.0,MUON_TRK_LEN=10.0,MUON
 static const int NSHOWERS_MAX=4,NTRACKS_MAX=5;
 static const double TRK_SHR_SPLIT=0.5,TOPO_MIN=0.20,LLR_SCALE=0.591,DCHI_SCALE=124.5;
 static const int NWP[3]={2400,2400,3456}, CDW=3; static const double CDT=40.0;
+// Shower1Energy cap [GeV]. hypana's shr_energy_plane2 is garbage for some PFPs (up to 6e33;
+// 5% of background and 1.3% of signal above 2 GeV, 2.2% / 0.5% above 10). TMVA places its
+// nCuts grid evenly between a node's min and max, so one such value can leave the variable
+// unusable in that node. Capping keeps "above 2 GeV" as one value. Measured 2026-10-19: no
+// effect on this BDT (AUC 0.834 with and without), kept so that the range is physical.
+// A +inf energy (8 background events) now lands on the cap instead of the isfinite -1.
+static const double SHR_E_CAP=2.0;
 static std::vector<bool> DEAD[3];
 
 static std::vector<std::string> loadList(const char*p){ std::ifstream in(p); std::string l;
@@ -209,7 +216,7 @@ void DumpBDTHyp(const char* out="BDTHyp.root"){
         else      { for(int j=0;j<5;++j) v[k++]=SENT; }
         if(pairOK){ v[k++]=V(llr,pr,-2); v[k++]=V(tl,pr,-1); v[k++]=dv[pr]; v[k++]=V(sc,pr,-1); v[k++]=Vi(nhy,pr,-1); }
         else      { for(int j=0;j<5;++j) v[k++]=SENT; }
-        v[k++]=Vi(nhy,s1,-1); v[k++]=dv[s1]; v[k++]=V(se2,s1,-1)/1000.0;
+        v[k++]=Vi(nhy,s1,-1); v[k++]=dv[s1]; v[k++]=std::min(V(se2,s1,-1)/1000.0,SHR_E_CAP);
         if(pairOK){ v[k++]=(st[mu]-st[pi]).Mag(); v[k++]=(st[pr]-st[pi]).Mag(); v[k++]=(st[pr]-st[mu]).Mag(); }
         else      { for(int j=0;j<3;++j) v[k++]=SENT; }
         v[k++]=(st[s1]-st[mu]).Mag();

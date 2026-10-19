@@ -6,7 +6,7 @@ formats, different samples, separate inputs and outputs — and can be run side 
 | chain | format | signal MC | S | B | purity | role |
 |---|---|---|---|---|---|---|
 | `SigmaSelection.C` + BDT | PeLEE | NuWro run3b | 2.11 | 382 | 0.55% | **the analysis**: the only chain that can see data, EXT and dirt |
-| `DumpBDTHyp.C` + BDT | hypana | GENIE | 19.3 | 670 | 2.8% | truth studies; candidate purity, backtracking (Run 3 background only) |
+| `DumpBDTHyp.C` + BDT | hypana | GENIE | 20.2 | 712 | 2.8% | truth studies; candidate purity, backtracking |
 | `SigmaLambdaSel.C` | hypana | GENIE | 1.33 | 4.38 (3.76 MC + 0.62 EXT) | **23%** | **best performing**; needs wire activity: MC + factorised EXT, no data or dirt yet (NuWro: S 0.142) |
 
 NuWro yields include hyperon FSI and GENIE yields do not, a model difference of roughly
@@ -166,6 +166,35 @@ scores).
 Previous weights: `SigmaBDT_{A,B}.preext/` (2026-10-15) and `SigmaBDT_{A,B}.exthalf/` (EXT, half
 fold), both untracked; the 2026-10-15 weights are also in git history.
 
+**Not adopted: input ranges (measured 2026-10-19).** Several BDT inputs carry values far outside
+their physical range:
+- the −FLT_MAX "missing" sentinel, in `Shower1VtxDist` (24% of background, 17% of signal) and
+  `Shower1DeDxY` (40% / 32%);
+- garbage calorimetric energies up to 2e33 in `PionCaloEnergyY` and `ProtonCaloEnergyY`, with
+  1.7% and 3.0% of background above 2,000 MeV;
+- +FLT_MAX in `LambdaMass`, `SigmaMass`, `LambdaImpact` and `LambdaDecayDist` for 5 background
+  events;
+- INT_MAX in `ShrSubClusters` and 1e5 in the pair distances.
+
+TMVA places its `nCuts` grid evenly between a node's minimum and maximum, so one such value
+leaves the variable unusable in that node. With bagging, almost every root node contains one
+of the five events, so it cannot cut on the masses. `ClampBDTInputs.C` maps each input into
+its bulk range, with distinct underflow and overflow values; the calorimetric energies are
+capped at 2,000 MeV. The tree was then retrained with `TrainBDT.C`, rescored with
+`RescoreBDT.C` and compared with `CompareBDT.C` (commands in the `ClampBDTInputs.C` header):
+
+| | AUC | B/B₀ at 50% sig eff | at 40% | at 20% | FoM peak |
+|---|---|---|---|---|---|
+| as now (seeds 100, 1, 2; mean) | 0.9006 | 0.0355 | 0.0212 | 0.0060 | 0.1084 |
+| clamped (seeds 100, 1; mean) | 0.9042 | 0.0342 | 0.0208 | 0.0060 | 0.1101 |
+
+Both clamped seeds beat all three present seeds on AUC, on background at 50% efficiency and on
+FoM, so the gain is real, but it is small: −4% background at 50% signal efficiency, −2% at
+40%, nothing at 20%, +1.6% FoM. Adopting it means putting the clamp into `SigmaSelection.C`,
+which both fills the tree and feeds the reader, then retraining and updating the numbers
+downstream. Fold it into the next retraining. The hypana BDT has the same problem in one
+variable and shows no effect (see "BDT retrained (2026-10-19)" in the hypana section).
+
 ### Sample changes of 2026-10-17
 
 - **The dirt was FHC.** `/data/uboone/dirt/neutrinoselection_filt_run1_dirt_overlay.root`
@@ -242,6 +271,52 @@ root -l -b -q BkgDisplay.C                   # event displays of surviving backg
 File lists are repo-tracked in `pelee/lists/`; regenerate by globbing `*_hypana.root`
 under the GENIE run3b signal and RHC overlay hypana directories. Operating point in
 `HypConfig.h` (`BDTG_CUT = 0.554`).
+
+### BDT retrained (2026-10-19)
+
+Three things were stale. `AblateBDT.C` trained each fold on TMVA's default half, so on 25%
+of all events. `BDTHyp.root` held the Run 3 background only. Its island variables predated
+the 2×20 tuning. Now each fold trains on 95% (`testFrac`, as in `TrainBDT.C`) and the tree
+holds the full 14,164-file background: 123,000 events instead of 48,708. The per-POT
+background agrees at `NTracksCut`, 20,113 ± 57 against 20,198 ± 92. The old tree is kept as
+`BDTHyp.root.run3bkg`.
+
+Out of sample, the 53-variable configuration, means of split seeds 100 and 7:
+
+| tree | training | AUC | peak FoM (0.05 grid) | B kept at 90% signal |
+|---|---|---|---|---|
+| Run 3 background | half fold | 0.827 | 0.726 | 50.3% |
+| Run 3 background | 95% of fold | 0.838 | 0.773 | 47.6% |
+| full background | half fold (seed 100) | 0.824 | 0.717 | 50.9% |
+| full background | 95% of fold | 0.834 | 0.750 | 48.6% |
+| **full background, `Shower1Energy` cap (adopted)** | **95% of fold** | **0.834** | **0.740** | **48.7%** |
+| production weights (`DumpBDTHyp.C` output, seed 100) | 95% of fold | 0.834 | 0.745 | 48.9% |
+| full background, all inputs clamped | 95% of fold | 0.836 | 0.761 | 47.9% |
+
+- **The split is the gain.** It adds 0.010 to the AUC and 5–6% to the peak FoM, against a
+  seed scatter of ±0.002 in AUC and ±1% in FoM. The peak FoM is a maximum over a scan of the
+  evaluated sample, so it scatters more than the AUC. The signal-statistics limit again: the
+  BDT still improves when it sees more signal.
+- **The full background changes the rate, not the BDT.** The peak FoM is 3% lower than on the
+  old tree, whose scan ran over 2.5× fewer background events.
+- **Out-of-range inputs do not matter here.** hypana's `shr_energy_plane2` is garbage for
+  some PFPs (up to 6e33; 5% of background and 1.3% of signal above 2 GeV). TMVA places its
+  `nCuts` grid evenly between a node's minimum and maximum, so such a value can disable the
+  variable in that node. `DumpBDTHyp.C` now caps `Shower1Energy` at 2 GeV. Neither the cap
+  nor clamping all 53 inputs to their bulk ranges moves the AUC by more than 0.002. (The cap
+  row was measured by applying the cap to the uncapped full-background tree. The macro's own
+  output differs from that in 8 background events, whose +inf energy goes to the cap instead
+  of to −1.)
+- **The operating point stays at 0.554**: S 20.19, B 711.6, purity 2.76%, FoM 0.7463, against
+  S 19.32, B 670.5 before. The scan peaks at 0.540 (FoM 0.7496), but the plateau runs from 0.39
+  to 0.59 within 1.5%. The peak inside it is noise: the post-processed tree put it at 0.434.
+
+`TrainAllPFP.C` and `TrainBDTSplit.C` had the same default split and are fixed too.
+`TrainAllPFP.C` (on the PeLEE tree) does not change: the curated set gives AUC 0.845 with
+the half fold and 0.844 with 95%. The union with the per-PFP block is still 4% better in FoM
+than the curated set, and the per-PFP block alone is still worse (AUC 0.819).
+`TrainBDTSplit.C` was not rerun: its scorer `apply_split.C` reads its variable list from the
+tree, which now carries the per-PFP block, and the per-class split is a closed dead end.
 
 **Neutrino-slice requirement.** PeLEE applies one implicitly — 58.3% of its overlay
 events have `nslice==0`, no PFPs and no usable vertex, so they die at the fiducial
@@ -392,15 +467,16 @@ GENIE does not, plus the flux weight.
 
 With a fractional systematic *f* on the background, using S/√(S+B+(fB)²):
 
-| f | BDT chain (S 19.3, B 670) | **Lambda-style (S 1.33, B 3.76)** | no gap (S 1.39, B 6.21) | Run 3 only, no gap (B 4.15) |
+| f | BDT chain (S 20.2, B 712) | **Lambda-style (S 1.33, B 3.76)** | no gap (S 1.39, B 6.21) | Run 3 only, no gap (B 4.15) |
 |---|---|---|---|---|
-| 0% | 0.736 | **0.590** | 0.504 | 0.593 |
-| 7% | 0.359 | **0.586** | 0.498 | 0.590 |
-| 15% | 0.186 | **0.572** | 0.477 | 0.571 |
-| 30% | 0.095 | **0.527** | 0.417 | 0.508 |
+| 0% | 0.746 | **0.590** | 0.504 | 0.593 |
+| 7% | 0.356 | **0.586** | 0.498 | 0.590 |
+| 15% | 0.183 | **0.572** | 0.477 | 0.571 |
+| 30% | 0.094 | **0.527** | 0.417 | 0.508 |
 
-The crossover is at ~7% (the BDT column predates the background extension and the
-NuWro retrain), and the technote quotes 30–60% on RES/DIS backgrounds. At any
+The crossover is at f ≈ 3% (the BDT column is the 2026-10-19 retraining; the earlier
+S 19.3, B 670 gave the same crossover), and the technote quotes 30–60% on RES/DIS
+backgrounds. At any
 realistic systematic the high-purity chain wins, and the full-statistics background
 does not change that. Every operating point in this repo was
 historically chosen with f = 0, which systematically favoured the BDT chains.

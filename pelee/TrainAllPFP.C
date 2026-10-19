@@ -13,7 +13,12 @@
 //  The BDT is deliberately shallow: with ~3.2k signal events, 121 inputs is
 //  ~27 events per variable and overtraining is the main risk.
 //
+//  Each fold is split again into TMVA's own train/test samples; testFrac keeps 5% of
+//  the fold for TMVA's printout. Until 2026-10-19 it was TMVA's default half, so each
+//  fold trained on 25% of all events (see TrainBDT.C).
+//
 //  Run:  root -l -b -q TrainAllPFP.C
+//        root -l -b -q 'TrainAllPFP.C(0.5)'   # old split
 // ============================================================================
 R__LOAD_LIBRARY(libTMVA)
 #include "TMVA/Factory.h"
@@ -54,8 +59,19 @@ static double aucOf(std::vector<double> a, std::vector<double> b){
   double v=t/(double(a.size())*b.size()); return v<0.5?1-v:v;
 }
 
+// TMVA split options for one fold: nTrain=0 halves it; otherwise keep testFrac of it.
+static TString splitOpt(TTree* sig, TTree* bkg, const char* cut, double testFrac, int seed){
+  TString s="nTrain_Signal=0:nTrain_Background=0";
+  if(testFrac<0.5){
+    const Long64_t nS=sig->GetEntries(cut), nB=bkg->GetEntries(cut);
+    const Long64_t tS=(Long64_t)(testFrac*nS), tB=(Long64_t)(testFrac*nB);
+    s=Form("nTrain_Signal=%lld:nTest_Signal=%lld:nTrain_Background=%lld:nTest_Background=%lld",
+           nS-tS,tS,nB-tB,tB); }
+  return s+Form(":SplitMode=Random:SplitSeed=%d:NormMode=NumEvents:!V",seed);
+}
+
 static void runConfig(const char* tag, const std::vector<std::string>& vars,
-                      TTree* sig, TTree* bkg){
+                      TTree* sig, TTree* bkg, double testFrac, int seed){
   std::vector<double> sS,bS,sW,bW;
   for(int fold=0; fold<2; ++fold){
     TString ds = TString::Format("pfp_%s_f%d",tag,fold);
@@ -70,7 +86,7 @@ static void runConfig(const char* tag, const std::vector<std::string>& vars,
     loader.SetSignalWeightExpression("Weight");
     loader.SetBackgroundWeightExpression("Weight");
     loader.PrepareTrainingAndTestTree(TCut(trainCut),TCut(trainCut),
-      "SplitMode=Random:NormMode=NumEvents:!V");
+      splitOpt(sig,bkg,trainCut,testFrac,seed));
     factory.BookMethod(&loader,TMVA::Types::kBDT,"BDTG",
       "!H:!V:NTrees=300:MinNodeSize=5%:MaxDepth=3:BoostType=Grad:Shrinkage=0.05:"
       "UseBaggedBoost:BaggedSampleFraction=0.5:nCuts=20:NegWeightTreatment=Pray");
@@ -110,14 +126,14 @@ static void runConfig(const char* tag, const std::vector<std::string>& vars,
   fflush(stdout);
 }
 
-void TrainAllPFP(){
+void TrainAllPFP(double testFrac=0.05, int seed=100){
   TMVA::Tools::Instance();
   TFile* f=TFile::Open("BDTInput.root");
   TTree* sig=(TTree*)f->Get("TreeS"); TTree* bkg=(TTree*)f->Get("TreeB");
   if(!sig||!bkg){ printf("  no trees\n"); return; }
   if(!sig->GetBranch("p0_score")){ printf("  BDTInput.root has no all-PFP block\n"); return; }
-  printf("\n  signal %lld  background %lld   (two-fold CV, all numbers out-of-sample)\n\n",
-         sig->GetEntries(),bkg->GetEntries());
+  printf("\n  signal %lld  background %lld   (two-fold CV, all numbers out-of-sample; TMVA test share %.2f)\n\n",
+         sig->GetEntries(),bkg->GetEntries(),testFrac);
   std::vector<std::string> cur, pfp, both;
   for(int i=0;i<NCUR;++i) if(sig->GetBranch(CURATED[i])) cur.push_back(CURATED[i]);
   pfp.push_back("nPFPtot");
@@ -126,7 +142,7 @@ void TrainAllPFP(){
   for(int k=0;k<NSLOT-1;++k) for(int j=0;j<NPV;++j)
     pfp.push_back(Form("p%d_%s",k,PFPV[j]));
   both=cur; both.insert(both.end(),pfp.begin(),pfp.end());
-  runConfig("curated", cur,  sig,bkg);
-  runConfig("allpfp",  pfp,  sig,bkg);
-  runConfig("both",    both, sig,bkg);
+  runConfig("curated", cur,  sig,bkg,testFrac,seed);
+  runConfig("allpfp",  pfp,  sig,bkg,testFrac,seed);
+  runConfig("both",    both, sig,bkg,testFrac,seed);
 }

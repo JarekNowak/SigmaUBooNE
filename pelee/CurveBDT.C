@@ -1,4 +1,4 @@
-// CurveBDT.C -- fine-grained efficiency curve + ROC for the 49-variable BDT.
+// CurveBDT.C -- fine-grained efficiency curve + ROC for the 53-variable BDT.
 // Out-of-sample throughout: each event scored by the fold it was not trained on.
 R__LOAD_LIBRARY(libTMVA)
 #include "TMVA/Reader.h"
