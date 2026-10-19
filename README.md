@@ -20,8 +20,8 @@ hypana format it cannot produce a result on its own (EXT now does, factorised: s
 "EXT (beam-off) — factorised").
 
 On the expected 90% CL limit, with both chains under one signal model, **the PeLEE chain
-is as good as or better than the Λ-style chain at every background systematic up to 30%**
-([Expected sensitivity](#expected-sensitivity--sensitivityc)). Either result will be a
+is better than the Λ-style chain at any background systematic below about 20%, and within
+10% of it up to 30%** ([Expected sensitivity](#expected-sensitivity--sensitivityc)). Either result will be a
 limit: the median expected limit is about 3× GENIE's Σ⁰ rate at best, and 18× NuWro's.
 For the PeLEE chain the background systematic sets that number.
 
@@ -408,7 +408,7 @@ historically chosen with f = 0, which systematically favoured the BDT chains.
 **Superseded for the PeLEE chain (2026-10-19).** This table compares GENIE yields of two
 hypana chains, and each chain keeps its cut. The expected limit compares the PeLEE BDT with
 the Λ-style chain under one signal model, with the BDT cut re-optimised for each f. On that
-measure the PeLEE chain is as good as or better than the Λ-style chain at every f
+measure the PeLEE chain is better below f ≈ 20% and within 10% of the Λ-style chain up to 30%
 ([Expected sensitivity](#expected-sensitivity--sensitivityc)).
 
 ### Island finding — `Island.h`
@@ -613,6 +613,9 @@ units of a generator's prediction (μ = 1 is the model), for the PeLEE BDT chain
 
 ```bash
 cd pelee && root -l -b -q 'Sensitivity.C+'   # reads BDTInput.root and SigmaHists.root, ~2 min
+# with a fifth argument it also draws the limit against f (~6 min):
+root -l -b -q 'Sensitivity.C+("BDTInput.root","SigmaHists.root",0.759,0.20,"limit_vs_f.pdf")'
+root -l -b -q 'NoteFigures.C+("<dir>")'      # BDT score, island display, Lambda mass for the note
 ```
 
 **Method.** The analysis is treated as a single-bin counting experiment:
@@ -666,10 +669,14 @@ What it says:
    model rate is 0.63σ, for GENIE with f = 0 in the PeLEE chain; under NuWro it is about 0.1σ.
    - The best expected limit is about 3× GENIE, or 18× NuWro.
    - In events, that is ~220 in-FV ν̄μ CC Σ⁰ in 1.15e21 POT. GENIE predicts 73 and NuWro 13.
-2. **Under a common signal model the PeLEE chain is as good as or better than the Λ-style chain
-   at every f.**
+2. **Under a common signal model the PeLEE chain is better than the Λ-style chain below
+   f ≈ 20%, and the two are within 10% of each other from 20 to 30%.**
    - With its cut set for the systematic it is 2.0× better at f = 0, 1.4× at 10% and 1.2× at
-     15%, and equal at 30%.
+     15% (NuWro; GENIE gives 1.8×, 1.2× and 1.1×).
+   - From 20 to 30% the model decides (Poisson medians at the re-chosen cut, from the
+     `limit_vs_f` pass). Under NuWro the PeLEE chain stays ahead (38.2 against 39.3 at 30%).
+     Under GENIE the Λ-style chain is ahead (5.7 against 6.2 at 30%), because the two
+     chains' GENIE/NuWro ratios differ: 6.2 for PeLEE against 7.1 for Λ-style.
    - The Λ-style chain's 23% purity is real, but its signal yield is 15× lower (S 0.142 against
      2.11 under NuWro).
    - At B ≈ 4.4 its limit is set by Poisson counting, not by the background. Removing all

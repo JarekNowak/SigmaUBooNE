@@ -27,11 +27,23 @@
 //  selection) for the PeLEE chain; the Lambda-style numbers are the README
 //  operating point and are typed in below.
 //
+//  With plotFile set, also draws the median limit against f for both models
+//  (limit_vs_f.pdf in the note): PeLEE at the operating point and with the cut
+//  re-chosen for each f, and the Lambda-style chain, with 16-84% bands.
+//
 //  Run:  root -l -b -q Sensitivity.C+
+//        root -l -b -q 'Sensitivity.C+("BDTInput.root","SigmaHists.root",0.759,0.20,"limit_vs_f.pdf")'
 // ============================================================================
 #include "TFile.h"
 #include "TTree.h"
 #include "TH1D.h"
+#include "TCanvas.h"
+#include "TGraph.h"
+#include "TGraphAsymmErrors.h"
+#include "TLegend.h"
+#include "TLine.h"
+#include "TLatex.h"
+#include "TStyle.h"
 #include "Math/SpecFuncMathCore.h"
 #include <cmath>
 #include <cstdio>
@@ -186,7 +198,7 @@ void printChain(const Row& r, double g, const double* fs, int nf, double nPredN 
 }
 
 void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "SigmaHists.root",
-                 double bdtCut = 0.759, double g = 0.20)
+                 double bdtCut = 0.759, double g = 0.20, const char* plotFile = "")
 {
   // ── 1. self-test against the PDG table (90% CL, b = 0: 2.30 3.89 5.32 6.68 7.99)
   printf("\n== self-test, b = 0 (PDG: 2.30 3.89 5.32 6.68 7.99) and b = 3, n = 3 ==\n  Bayes:");
@@ -293,4 +305,57 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
            cuts[iBest], qb.S, qb.B, 100 * std::sqrt(qb.B2) / qb.B, qb.raw[5], muBest,
            cuts[iFom], qf.S, qf.B, muAt(qf, f), muAt(y, f));
   }
+
+  if (!plotFile || !plotFile[0]) return;
+
+  // ── 6. median limit against f, both models (Poisson median; the re-chosen cut
+  //       is found on the Asimov limit, as in section 5)
+  const int NF = 13;
+  TGraph gReN, gReG;
+  TGraphAsymmErrors gPeN, gPeG, gLsN, gLsG;
+  for (int k = 0; k < NF; ++k) {
+    const double f = 0.025 * k;
+    const double rPe = std::sqrt(pe.rB * pe.rB + f * f), rL = std::sqrt(ls.rB * ls.rB + f * f);
+    const Exp pN = expected(pe.B, rPe, std::hypot(g, pe.rSN)), pG = expected(pe.B, rPe, std::hypot(g, pe.rSG));
+    const Exp lN = expected(ls.B, rL, std::hypot(g, ls.rSN)), lG = expected(ls.B, rL, std::hypot(g, ls.rSG));
+    auto setP = [&](TGraphAsymmErrors& gr, const Exp& e, double S){
+      gr.SetPoint(k, 100 * f, e.med / S); gr.SetPointError(k, 0, 0, (e.med - e.lo) / S, (e.hi - e.med) / S); };
+    setP(gPeN, pN, pe.sN); setP(gPeG, pG, pe.sG); setP(gLsN, lN, ls.sN); setP(gLsG, lG, ls.sG);
+    int iBest = -1; double muBest = 1e99;
+    for (size_t i = 0; i < cuts.size(); ++i) {
+      const Yield& q = ys[i];
+      if (q.rawS < 50 || q.B <= 0) continue;
+      const double mu = muAt(q, f);
+      if (mu < muBest) { muBest = mu; iBest = i; }
+    }
+    const Yield& q = ys[iBest];
+    const double muRe = expected(q.B, std::sqrt(q.B2 / (q.B * q.B) + f * f), std::sqrt(g * g + q.S2 / (q.S * q.S))).med / q.S;
+    gReN.SetPoint(k, 100 * f, muRe); gReG.SetPoint(k, 100 * f, muRe / ratioGN);
+    printf("  plot f %4.1f%%: PeLEE %.1f / %.2f  re-chosen (%.3f) %.1f / %.2f  Lambda-style %.1f / %.2f\n", 100 * f,
+           pN.med / pe.sN, pG.med / pe.sG, cuts[iBest], muRe, muRe / ratioGN, lN.med / ls.sN, lG.med / ls.sG);
+  }
+  gStyle->SetOptStat(0); gStyle->SetOptTitle(0);
+  TCanvas c("cl", "", 1300, 560); c.Divide(2, 1);
+  const char* model[2] = {"NuWro (with hyperon FSI)", "GENIE (no hyperon FSI)"};
+  TGraphAsymmErrors* pe2[2] = {&gPeN, &gPeG}; TGraphAsymmErrors* ls2[2] = {&gLsN, &gLsG}; TGraph* re2[2] = {&gReN, &gReG};
+  for (int p = 0; p < 2; ++p) {
+    c.cd(p + 1); gPad->SetLogy(); gPad->SetLeftMargin(0.14); gPad->SetBottomMargin(0.13); gPad->SetTopMargin(0.08); gPad->SetRightMargin(0.03);
+    TH1D* fr = new TH1D(Form("frl%d", p), ";background systematic f [%];median expected 90% CL upper limit #mu_{UL}", 10, 0, 30);
+    fr->SetMinimum(p ? 0.5 : 5); fr->SetMaximum(p ? 30 : 200); fr->SetDirectory(0);
+    fr->GetXaxis()->SetTitleSize(0.05); fr->GetYaxis()->SetTitleSize(0.05); fr->GetXaxis()->SetLabelSize(0.045); fr->GetYaxis()->SetLabelSize(0.045);
+    fr->GetYaxis()->SetTitleOffset(1.25); fr->Draw("axis");
+    pe2[p]->SetFillColorAlpha(kAzure - 4, 0.25); pe2[p]->SetLineColor(kAzure + 2); pe2[p]->SetLineWidth(3);
+    ls2[p]->SetFillColorAlpha(kRed - 7, 0.25);  ls2[p]->SetLineColor(kRed + 1);  ls2[p]->SetLineWidth(3);
+    re2[p]->SetLineColor(kAzure + 2); re2[p]->SetLineWidth(3); re2[p]->SetLineStyle(2);
+    pe2[p]->Draw("3"); ls2[p]->Draw("3"); pe2[p]->Draw("LX"); ls2[p]->Draw("LX"); re2[p]->Draw("L");
+    if (p == 1) { TLine* one = new TLine(0, 1, 30, 1); one->SetLineStyle(3); one->SetLineWidth(2); one->Draw();
+                  TLatex* t1 = new TLatex(1, 1.1, "#mu = 1: the model"); t1->SetTextSize(0.04); t1->Draw(); }
+    TLatex* tt = new TLatex(); tt->SetNDC(); tt->SetTextSize(0.045); tt->DrawLatex(0.15, 0.94, Form("signal model: %s", model[p]));
+    TLegend* lg = new TLegend(0.16, 0.70, 0.62, 0.90); lg->SetTextSize(0.038); lg->SetBorderSize(0); lg->SetFillStyle(0);
+    lg->AddEntry(pe2[p], Form("PeLEE BDT, cut %.3f", bdtCut), "lf");
+    lg->AddEntry(re2[p], "PeLEE BDT, cut re-chosen for f", "l");
+    lg->AddEntry(ls2[p], "#Lambda-style (island)", "lf");
+    lg->Draw();
+  }
+  c.SaveAs(plotFile);
 }
