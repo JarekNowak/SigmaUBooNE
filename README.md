@@ -14,10 +14,16 @@ NuWro yields include hyperon FSI and GENIE yields do not, a model difference of 
 so compare the chains by purity and efficiency, not by S across rows.
 
 All yields are POT-scaled to the full RHC data exposure 1.1526e21 (see
-[POT normalisation](#pot-normalisation)). The three are not alternatives to choose
-between yet: the Lambda-style chain wins decisively on purity and on robustness to
-background systematics, but until data and dirt exist in hypana format it cannot
-produce a result on its own (EXT now does, factorised: see "EXT (beam-off) — factorised").
+[POT normalisation](#pot-normalisation)). The Lambda-style chain wins decisively on
+purity and on robustness to background systematics, but until data and dirt exist in
+hypana format it cannot produce a result on its own (EXT now does, factorised: see
+"EXT (beam-off) — factorised").
+
+On the expected 90% CL limit, with both chains under one signal model, **the PeLEE chain
+is as good as or better than the Λ-style chain at every background systematic up to 30%**
+([Expected sensitivity](#expected-sensitivity--sensitivityc)). Either result will be a
+limit: the median expected limit is about 3× GENIE's Σ⁰ rate at best, and 18× NuWro's.
+For the PeLEE chain the background systematic sets that number.
 
 ## Environment
 
@@ -118,7 +124,10 @@ The 15 raw EXT events at the end carry a 26% statistical error.
 ±7.6 events against 2.1 signal, and purity reaches only ~1% even at the tightest
 cuts that keep a usable signal (0.872: S 0.90, B 86). `S/sqrt(S+B)` cannot see that, so
 the systematic budget — not the counting metric — should ultimately set `BDT_MIN`. Rescan with `ScanPeleeBDT.C` after any
-change to the training or the preselection.
+change to the training or the preselection. `Sensitivity.C` puts a number on it: the cut
+that minimises the expected limit is 0.750 at f = 0, 0.875 at f = 10% and 0.890 at 15%. At
+f = 10% the move from 0.759 to 0.875 improves the expected limit by 25% (see
+[Expected sensitivity](#expected-sensitivity--sensitivityc)).
 
 ### BDT retrained with EXT (2026-10-18)
 
@@ -396,6 +405,12 @@ realistic systematic the high-purity chain wins, and the full-statistics backgro
 does not change that. Every operating point in this repo was
 historically chosen with f = 0, which systematically favoured the BDT chains.
 
+**Superseded for the PeLEE chain (2026-10-19).** This table compares GENIE yields of two
+hypana chains, and each chain keeps its cut. The expected limit compares the PeLEE BDT with
+the Λ-style chain under one signal model, with the BDT cut re-optimised for each f. On that
+measure the PeLEE chain is as good as or better than the Λ-style chain at every f
+([Expected sensitivity](#expected-sensitivity--sensitivityc)).
+
 ### Island finding — `Island.h`
 
 Build a wire × time grid of filtered activity, seed clusters at the muon / proton /
@@ -588,6 +603,106 @@ cosmic part uses the same definition, so the selection is consistent within hypa
 `pfp_true_origin` is
 HyperonProduction's own enum (1 ν primary, **2 Λ daughter**, 3 other, 5 Σ⁰ daughter, −1
 unmatched), not `simb::Origin`; `HypInput.h` had mapped 2 to "cosmic" (unused, now fixed).
+
+## Expected sensitivity — `Sensitivity.C`
+
+`pelee/Sensitivity.C` (2026-10-19) gives the expected 90% CL upper limit on μ, the Σ⁰ rate in
+units of a generator's prediction (μ = 1 is the model), for the PeLEE BDT chain and the
+Λ-style chain. Both chains are evaluated against the same two models. It replaces the BNB-era
+`../CrossSection.C`, whose inputs were placeholders.
+
+```bash
+cd pelee && root -l -b -q 'Sensitivity.C+'   # reads BDTInput.root and SigmaHists.root, ~2 min
+```
+
+**Method.** The analysis is treated as a single-bin counting experiment:
+n ~ Pois(μ·S·e + b).
+- **Background b:** lognormal with mean B. Its width is the MC statistics of B (EXT and dirt
+  included) added in quadrature with a background systematic f, which is scanned.
+- **Signal normalisation e:** lognormal with a 20% width (`g`, a placeholder for flux,
+  efficiency and POT) plus the signal MC statistics.
+- **Limit:** Bayesian, with a flat prior in μ ≥ 0 and both nuisances marginalised.
+- **Expected limit:** the limit at the median n of Pois(B), with a 16–84% band.
+- **Cross-check:** hybrid CLs comes out 4% tighter throughout. Both methods reproduce the
+  PDG table exactly for a known background (2.30, 3.89, 5.32, 6.68, 7.99).
+- **Discovery reach:** Z_A is the median discovery significance (Cowan et al.).
+
+`SigmaSelection.C` now also counts the overlay's own Σ⁰ events through the full selection
+and BDT (`GenieSignal` in `SigmaHists.root`; they stay out of B and out of the BDT trees).
+This gives the PeLEE chain a GENIE signal yield under the same definition: **13.09 ± 1.01 at
+the operating point (187 raw), against 72.6 in the FV, so 18.0% efficiency**. NuWro gives 16.9%.
+That is 6.2× NuWro's 2.11. For the Λ-style chain the GENIE column takes the hyperon-sample
+S = 1.33 and divides by 1.32, the sample's excess over the overlay, giving 1.01. Both chains
+then face the same GENIE.
+
+The NuWro events whose Σ⁰ was lost to FSI are a background. At the Λ-style point this was
+measured for the first time (`IslandProcess.C` on `sig_nuwro.list` with `signalOnly=false`):
+0.021 ± 0.003 events (37 raw), against PeLEE's 1.06.
+
+**Expected 90% CL limit on μ (median, g = 20%):**
+
+| background syst. f | PeLEE at 0.759: NuWro [16–84%] | GENIE | PeLEE, cut set for this f (cut): NuWro | GENIE | Λ-style: NuWro [16–84%] | GENIE |
+|---|---|---|---|---|---|---|
+| 0% | 18.1 [12.8, 26.2] | 2.95 | 18.2 (0.750) | 2.9 | 36.9 [25.6, 51.9] | 5.33 |
+| 5% | | | 22.6 (0.850) | 3.6 | | |
+| 7% | 28.5 [22.5, 36.3] | 4.65 | | | 37.1 | 5.35 |
+| 10% | | | 26.8 (0.875) | 4.3 | | |
+| 15% | 48.2 [41.4, 56.2] | 7.88 | 31.1 (0.890) | 5.0 | 37.6 [25.9, 52.7] | 5.43 |
+| 30% | 82.3 [74.4, 90.9] | 13.45 | 39.9 (0.925) | 6.4 | 39.3 [26.9, 54.8] | 5.68 |
+
+- **Where the "cut set for f" columns come from:** a scan of `BDT_MIN` from 0.50 to 0.95
+  minimising the limit at n = B (Asimov), on the same cross-validated scores.
+- **How they convert to GENIE:** GENIE = NuWro / 6.20, the ratio measured at 0.759.
+- **The 30% row:** it relies on few raw EXT events, so its error is large. The 0.925 point
+  keeps none. A component with no raw events left is given one event of its own weight as
+  its error.
+- **The limit on the event count is model-independent.** At 0.759 and f = 0, μ_UL times each
+  model's in-FV count gives 227 (NuWro) and 214 (GENIE). They agree to 6% because the two
+  efficiencies do.
+
+What it says:
+
+1. **No discovery is possible, so the result is a limit.** The best median significance at the
+   model rate is 0.63σ, for GENIE with f = 0 in the PeLEE chain; under NuWro it is about 0.1σ.
+   - The best expected limit is about 3× GENIE, or 18× NuWro.
+   - In events, that is ~220 in-FV ν̄μ CC Σ⁰ in 1.15e21 POT. GENIE predicts 73 and NuWro 13.
+2. **Under a common signal model the PeLEE chain is as good as or better than the Λ-style chain
+   at every f.**
+   - With its cut set for the systematic it is 2.0× better at f = 0, 1.4× at 10% and 1.2× at
+     15%, and equal at 30%.
+   - The Λ-style chain's 23% purity is real, but its signal yield is 15× lower (S 0.142 against
+     2.11 under NuWro).
+   - At B ≈ 4.4 its limit is set by Poisson counting, not by the background. Removing all
+     background uncertainty moves it by only 3%.
+   - This reverses the conclusion of "Why S/√(S+B) is the wrong metric here", which compared
+     the Λ-style chain with the hypana BDT, used GENIE's hyperon-sample normalisation, and kept
+     each cut where it had been chosen at f = 0.
+3. **The background systematic drives the PeLEE result.**
+   - From f = 0 to 15% the limit grows 1.7× with the cut re-optimised, and 2.7× at the
+     present 0.759.
+   - Constraining the background matters most: a fit to the data's BDT-score sideband, plus
+     flux and GENIE reweighting.
+   - **`BDT_MIN` should follow the systematic budget.** At f = 10%, 0.875 instead of 0.759
+     improves the expected limit by 25%.
+   - The counting FoM S/√(S+B+(fB)²) agrees with the limit up to 10%. Beyond that it picks cuts
+     whose B rests on a few raw events (0.940, B 6.3) and is 1.7× worse.
+4. **For sensitivity, nothing missing from the Λ-style chain matters.** Changes at f = 15%,
+   NuWro, median (Asimov in brackets):
+
+| | B | median n | μ_UL |
+|---|---|---|---|
+| nominal | 4.40 | 4 | 37.6 (40.4) |
+| without the EXT estimate | 3.78 | 4 | 39.8 (38.2) |
+| with dirt at its bound, +0.33 ± 0.33 (PeLEE dirt/overlay at MuonCandidate, 8.7%) | 4.73 | 5 | 43.5 (41.6) |
+| g = 0 | 4.40 | 4 | 34.4 (36.9) |
+| background known exactly | 4.40 | 4 | 36.5 (39.2) |
+| GENIE at the hyperon-sample normalisation (GENIE column) | | | 4.11, against 5.43 |
+
+   - Because n is an integer, the median moves in steps: dropping EXT lowers B at the same
+     median n of 4 and so *raises* the median limit. The Asimov column moves smoothly.
+   - Hypana data and dirt would let the Λ-style chain give an independent cross-check, one
+     with a different set of systematics. They would not give a better limit.
+   - The Λ-style operating point was chosen for FoM at f = 15%, not for a limit.
 
 ## POT normalisation
 

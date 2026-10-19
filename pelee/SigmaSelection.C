@@ -444,6 +444,10 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   double Selected[Nc][Ns] = {{0}};
   long   RawSel[Nc][Ns]   = {{0}};
   long   nSkippedRagged = 0, nDupData = 0, nOverlaySig = 0;
+  //  The overlay's own (GENIE) signal events, counted apart from every sample:
+  //  the GENIE prediction for the same signal definition and selection.
+  double OvlSig[Nc] = {0}, OvlSigW2[Nc] = {0};
+  long   OvlSigRaw[Nc] = {0};
   std::unordered_set<unsigned long long> seenData;   // run/sub/evt of data events read
 
   // ── Branch variables (declared once, reused across files) ───────────────────
@@ -718,11 +722,14 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
           !SigmaFV::isFiducial(true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z)) continue;
 
       //  The inclusive overlay contains GENIE signal events too. The signal is
-      //  modelled by the dedicated sample, so they are not background: drop them,
-      //  as the hypana chain does (IslandProcess.C, isSig). Signal outside the true
-      //  FV stays, as background.
-      if (s == 2 && fd.sample == 2 && IsSignal &&
-          SigmaFV::isFiducial(true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z)) { nOverlaySig++; continue; }
+      //  modelled by the dedicated sample, so they are not background: keep them
+      //  out of B, the BDT trees and the histograms, as the hypana chain does
+      //  (IslandProcess.C, isSig), and count them in OvlSig as the GENIE signal
+      //  prediction. The BDT never trains on them, so their score is unbiased.
+      //  Signal outside the true FV stays, as background.
+      const bool ovlSig = (s == 2 && fd.sample == 2 && IsSignal &&
+          SigmaFV::isFiducial(true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z));
+      if (ovlSig) nOverlaySig++;
 
       // ── Reco vertex + fiducial flag ──────────────────────────────────────────
       TVector3 vtx(reco_nu_vtx_sce_x, reco_nu_vtx_sce_y, reco_nu_vtx_sce_z);
@@ -984,7 +991,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
         for (int k = 0; k < NBV - 1; k++) if (!std::isfinite(bdtv[k])) bdtv[k] = -1.0f;
         // Score with the fold that did NOT train on this event: even→B, odd→A.
         if (bdtReady) bdtg = reader->EvaluateMVA(bdtIsOdd > 0.5 ? "BDTG_A" : "BDTG_B");
-        if (writeBDT && s != 4) {
+        if (writeBDT && s != 4 && !ovlSig) {
           bool hasPi0 = false; if (mc_pdg) for (int p : *mc_pdg) if (p == 111) { hasPi0 = true; break; }
           tScore  = bdtg;            tSample = s;
           tNuPdg  = nu_pdg;          tCcnc   = ccnc;       tInter = interaction;
@@ -1050,6 +1057,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
 
       int cmax = -1;
       for (int c = 0; c < Nc; c++) { if (Cuts[c]) cmax = c; else break; }
+      if (ovlSig) { for (int c = 0; c <= cmax; c++) { OvlSig[c] += W; OvlSigW2[c] += W * W; OvlSigRaw[c]++; } continue; }
       if (dvT) {
         dvRun = run; dvSub = sub; dvEvt = evt; dvNuE = nu_e; dvSig = (s == 0);
         dvCmax = cmax; dvBdtg = bdtg; dvW = W; dvT->Fill();
@@ -1142,6 +1150,25 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   std::cout << "Skipped ragged entries: " << nSkippedRagged
             << ", duplicate data events: " << nDupData
             << ", overlay signal events removed from the background: " << nOverlaySig << "\n";
+
+  // ── GENIE signal: the overlay's own signal events (not in any sample) ───────
+  std::cout << "\n========== GENIE overlay signal (same definition, not in B) ==========\n";
+  std::cout << std::left << std::setw(18) << "Cut" << std::right << std::setw(10) << "Raw"
+            << std::setw(12) << "S_GENIE" << std::setw(9) << "Eff[%]" << std::setw(13) << "GENIE/NuWro" << "\n";
+  for (int c = 0; c < Nc; c++)
+    std::cout << std::left << std::setw(18) << CutName[c] << std::right
+              << std::setw(10) << OvlSigRaw[c]
+              << std::setw(12) << std::fixed << std::setprecision(3) << OvlSig[c]
+              << std::setw(9) << std::setprecision(2) << (OvlSig[0] > 0 ? 100.0 * OvlSig[c] / OvlSig[0] : 0.0)
+              << std::setw(13) << std::setprecision(3) << (Selected[c][0] > 0 ? OvlSig[c] / Selected[c][0] : 0.0) << "\n";
+  std::cout << "======================================================================\n";
+  fout->cd();
+  TH1D* hGenie = new TH1D("GenieSignal", "GENIE overlay signal per cut (not in B);cut;events", Nc, 0, Nc);
+  for (int c = 0; c < Nc; c++) {
+    hGenie->GetXaxis()->SetBinLabel(c + 1, CutName[c]);
+    hGenie->SetBinContent(c + 1, OvlSig[c]);
+    hGenie->SetBinError(c + 1, std::sqrt(OvlSigW2[c]));
+  }
 
   // ── Signal-efficiency / significance diagnostics ────────────────────────────
   //  eff   = raw signal events at cut c / raw signal at AllEvents (true Sig in FV)
