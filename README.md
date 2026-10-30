@@ -1132,6 +1132,37 @@ them is a model choice of roughly a factor of four, not a bug to be fixed. The m
 Λ cross section, 2.0 +2.2/−1.7 ×10⁻⁴⁰ cm²/Ar, brackets both generators and cannot
 currently distinguish them.
 
+### GENIE hyperon cross section (2026-10-30)
+
+**GENIE's Σ⁰ is 1.85× too high and its Λ 0.80× too low**; NuWro is right. With the
+NuWro cascade and jailing off (`kaskada_on=0 hyp_Eb=0`, flux weight on) the generators
+agree on Λ (NuWro/GENIE 1.07) but not on Σ⁰ (0.59) or Σ⁻ (0.58), with the same energy
+dependence for all three. Both use the same Cabibbo SU(3) form factors (x = 0.365,
+M_A ≈ 1 GeV). An independent Dirac-trace calculation (`HypXsecWeights.py`, validated on
+CCQE: ν 1.06, ν̄ 0.41 ×10⁻³⁸ cm² at 1 GeV) gives free-proton Σ⁰/Λ = 0.19, NuWro 0.21,
+GENIE's splines 0.45. A transcription of `PaisQELLambdaPXSec::XSec` reproduces GENIE's
+splines, agrees with the trace to 0.5% when the final baryon has the nucleon mass, and
+diverges as the mass is raised (its Σ⁰ cross section *rises* with M_Y), so the error is
+in its mass-difference terms.
+
+Tools:
+
+| file | what |
+|---|---|
+| `HypXsecWeights.py` | trace and Pais cross sections; writes `hyp_xsec_weights.root`: `w_<pdg>` = trace/Pais in (log10 E_rest, u), `PL_/PT_<pdg>` = hyperon polarisation |
+| `HypXsecWeight.h` | per-event weight; struck nucleon from the event or at rest (1% difference); capped at 5 where Pais is clipped to 0 (≤0.3% of σ) |
+| `PolWeights.C` | Σ⁰ decay-angle weight w = 1 − α(P_Σ·n)(n·q) from PeLEE production kinematics + hypana Λ/nucleon directions → `pol_<sample>.tsv` |
+| `GenRate.C` | generator-level rate from HepMC lists; `hypPdg`, `xsecW` arguments |
+
+On the generator files the weight takes GENIE Λ 209.5 → 263.0 and Σ⁰ 81.7 → 54.4 per data
+POT (NuWro 223.7, 47.9), Σ⁰/Λ 0.390 → 0.207 (NuWro 0.214), with no loss of statistics.
+`SigmaSelection.C` (`hyperonRW`, default on) applies it to every hyperon-QE event of every
+GENIE sample and the polarisation weights to the GENIE QE and NuWro signal files
+(`FileDesc::polW`). Polarisation checks: Λ momentum in the Σ⁰ frame 75.4 ± 10 MeV/c (74.5
+expected), nucleon in the Λ frame 108 ± 26 (100.6); ⟨w⟩ = 0.997, rms 0.15.
+
+NuWro's cascade keeps 64% of primary Λ as Λ (32% jailed, 4% to Σ), against 24% for Σ⁰.
+
 ### Sample bookkeeping notes
 
 - The **NuWro sample is Σ⁰-filtered** (Σ⁰ 24.9%, Λ 27.9% at the hyperon level, and 37.3%

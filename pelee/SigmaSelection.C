@@ -44,6 +44,8 @@ R__LOAD_LIBRARY(libTMVA)
 #include "SigmaSelConfig.h"
 #include "SigmaFV.h"
 #include "PidAssign.h"
+#include "HypXsecWeight.h"
+#include "FluxWeights.h"
 
 using namespace SigmaCfg;
 
@@ -172,7 +174,8 @@ struct FluxRW {
 //        "/data/uboone/temp/custom_pelee_ntuples/detvar/run3/numi_detvars_pion_ntuples_run3_rhc_CV_slim.root")'
 void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = true,
                     bool requirePion = true, bool requireProtonPion = false,
-                    const char* detvarFile = "")
+                    const char* detvarFile = "",
+                    bool hyperonRW = true)   // GENIE hyperon-QE cross section + Sigma0 polarisation weights
 {
   const bool detvar = detvarFile && detvarFile[0];
   if (detvar) writeBDT = false;
@@ -189,6 +192,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     bool  isData;        // reset ppfx/weightTune/weightSpline to 1
     bool  fluxRW;        // NuWro: weight onto the current NuMI flux (see FluxRW)
     bool  ppfxMap = false; // no flux-parent record: PPFX CV weight from the overlay's E_nu map
+    std::string polW = "";  // Sigma0 polarisation weights "run sub evt w" (PolWeights.C), this production only
   };
 
   //  Signal: the run3b NuWro Sigma0 production (2500 overlay jobs on swizzled
@@ -208,7 +212,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   const std::string NUMI = "/data/uboone/new_numi_flux/";
   const std::string DIRT = "/data/uboone/temp/custom_pelee_ntuples/dirt_overlay/";
   std::vector<FileDesc> files = {
-    { SIG,                                                            -1, true,  false, true }, // 0/1 signal + hyperons
+    { SIG,                                                            -1, true,  false, true, false, "pol_nuwro.tsv" }, // 0/1 signal + hyperons
     // 2 background — ALL RHC overlay runs (Run1+2+3+4a+4b+4c), summed POT below
     { NUMI + "Run1_rhc_new_numi_flux_rhc_pandora_ntuple.root",         2, false, false, false },
     { NUMI + "Run2_rhc_new_numi_flux_rhc_pandora_ntuple.root",         2, false, false, false },
@@ -234,7 +238,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     //  closure test against the NuWro signal model. Until 2026-10-30 this slot held
     //  the NuWro sample itself. Its true in-FV signal is also counted apart
     //  (GenieQE) as the GENIE signal prediction. Flip isData=true for beam-on data.
-    { GENIE_QE,                                                        4, false, false, false, true }, // 4 fake data + GENIE QE signal
+    { GENIE_QE,                                                        4, false, false, false, true, "pol_genie_qe.tsv" }, // 4 fake data + GENIE QE signal
   };
 
   // ── POT / normalization (editable block) ─────────────────────────────────────
@@ -549,9 +553,25 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     delete fm;
     if (!ppfxMapP) std::cout << "  WARNING: ppfx_numubar_map.root not readable -- GENIE QE sample left without the PPFX CV weight\n"; }
 
+  //  Hyperon weights (2026-10-30, README "GENIE hyperon cross section").
+  //  (1) GENIE's numubar hyperon QE model (PaisQELLambdaPXSec) has wrong hyperon-nucleon
+  //  mass-difference terms: Sigma0/Lambda 0.45 against 0.19 from the full trace matrix element,
+  //  which NuWro (0.21) agrees with. Every GENIE sample (overlay, dirt, detector variations, the
+  //  Sigma0 QE sample) is weighted per hyperon-QE event by trace/Pais at (E_nu, Q2), struck
+  //  nucleon at rest (the rest-frame version differs by 1%): Sigma0 x0.67, Lambda x1.26 on the
+  //  in-FV rate. The NuWro signal (sample -1) has the right model and is not weighted.
+  //  (2) Both generators decay the Sigma0 and Lambda isotropically; polW carries the decay-angle
+  //  weight for the produced Sigma0 polarisation (<w> = 1, rms 0.15 per event).
+  HypXsecWeight::Table hypXW;
+  const bool useHypXW = hyperonRW && hypXW.load("hyp_xsec_weights.root");
+  if (hyperonRW && !useHypXW) std::cout << "  WARNING: hyp_xsec_weights.root not readable -- GENIE hyperon QE left unweighted\n";
+  double nHypXW = 0, sumHypXW = 0, nPolW = 0, sumPolW = 0;
+
   // ── File loop ───────────────────────────────────────────────────────────────
   for (size_t i_f = 0; i_f < files.size(); i_f++) {
     const FileDesc& fd = files[i_f];
+    const auto polMap = (hyperonRW && !fd.polW.empty()) ? loadFluxWeights(fd.polW.c_str())
+                                                        : std::map<unsigned long long, double>();
 
     TFile* f = TFile::Open(fd.path.c_str());
     if (!f || f->IsZombie()) { std::cerr << "Cannot open " << fd.path << "\n"; if (f) delete f; continue; }
@@ -694,7 +714,30 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
         const int b = std::min(std::max(ppfxMapP->FindBin(nu_e), 1), ppfxMapP->GetNbinsX());
         if (ppfxMapP->GetBinEntries(b) > 0) w_ppfx = ppfxMapP->GetBinContent(b);
       }
-      const double w_cv = safeWeight(pf * wt * ws) * w_flux * w_ppfx;
+      //  GENIE hyperon-QE cross-section weight (not the NuWro signal file, not data).
+      double w_hyp = 1.0;
+      if (useHypXW && !fd.isData && fd.sample != -1 && nu_pdg == -14 && ccnc == 0 && interaction == 0
+          && mc_pdg && mc_px) {
+        int ky = -1, km = -1;
+        for (size_t k = 0; k < mc_pdg->size(); ++k) {
+          const int pd = mc_pdg->at(k);
+          if (ky < 0 && (pd == 3122 || pd == 3212 || pd == 3112)) ky = (int)k;
+          if (km < 0 && pd == -13) km = (int)k;
+        }
+        if (ky >= 0 && km >= 0) {
+          TLorentzVector pn, pm, pnuc(0, 0, 0, HypXsecWeight::nucleonMass(mc_pdg->at(ky)));
+          pn.SetPxPyPzE(true_nu_px, true_nu_py, true_nu_pz, nu_e);
+          pm.SetXYZM(mc_px->at(km), mc_py->at(km), mc_pz->at(km), HypXsecWeight::MMU);
+          w_hyp = hypXW.weight(mc_pdg->at(ky), pn, pnuc, pm);
+          nHypXW++; sumHypXW += w_hyp;
+        }
+      }
+      double w_pol = 1.0;
+      if (!polMap.empty()) {
+        auto ip = polMap.find(rseKey(run, sub, evt));
+        if (ip != polMap.end()) { w_pol = ip->second; nPolW++; sumPolW += w_pol; }
+      }
+      const double w_cv = safeWeight(pf * wt * ws) * w_flux * w_ppfx * w_hyp * w_pol;
 
       // ── Signal truth flag (Sigma0 in anti-nu_mu CC) ──────────────────────────
       //  Photons are NOT stored in mc_pdg, so the Sigma0->Lambda+gamma signature
@@ -1295,6 +1338,10 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   if (frw.ok)
     std::cout << "NuMI flux reweight applied to " << frw.nUsed << " NuWro events ("
               << frw.nEmpty << " outside the map -> weight 1)\n";
+  if (hyperonRW)
+    std::cout << "Hyperon weights: GENIE hyperon-QE xsec on " << nHypXW << " events (<w> "
+              << (nHypXW > 0 ? sumHypXW / nHypXW : 0.) << "), Sigma0 polarisation on " << nPolW
+              << " events (<w> " << (nPolW > 0 ? sumPolW / nPolW : 0.) << ")\n";
   std::cout << "Wrote " << outname << "\n";
 
   if (writeBDT) {
