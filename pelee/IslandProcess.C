@@ -19,7 +19,8 @@
 //  passes, the best pair regardless (precutOK=0) -- so its value on the events
 //  the precuts would remove is also known.
 //
-//  Run:  root -l -b -q 'IslandProcess.C("lists/sig_genie.list",0,true,"isl_sig_genie.root",1.9284e-2)'
+//  Run:  root -l -b -q 'IslandProcess.C("lists/sig_genie_qe.list",0,true,"isl_sig_genie_qe.root",9.37035e-4)'
+//        (the previous hyperon sample: "lists/sig_genie.list" -> "isl_sig_genie.root", 1.9284e-2)
 //        root -l -b -q 'IslandProcess.C("lists/bkg_overlay.list",0,false,"isl_bkg.root",1.6352e-1)'
 //  The last argument is the POT scale to data (1.1526e21 POT), see HypCutFlow.C.
 //  For lists/bkg_overlay.list it became 1.6536e-1 on 2026-09-24, when the overlay
@@ -63,8 +64,8 @@ enum { ST_ALL=0, ST_SLICE, ST_FV, ST_COSMIC, ST_NSHOW, ST_MUON, ST_PAIR, ST_MASS
 static const char* STNAME[NST] = { "AllEvents","SliceID","FiducialV","CosmicVeto","NShowers",
                                    "MuonCandidate","PairCandidate","LambdaMass","PointingAlpha" };
 
-void IslandProcess(const char* list = "lists/sig_genie.list", int maxFiles = 0,
-                   bool signalOnly = true, const char* outName = "isl_sig_genie.root",
+void IslandProcess(const char* list = "lists/sig_genie_qe.list", int maxFiles = 0,
+                   bool signalOnly = true, const char* outName = "isl_sig_genie_qe.root",
                    double potScale = 1.0, const char* fluxWeights = "")
 {
   const std::map<unsigned long long,double> FW = signalOnly ? loadFluxWeights(fluxWeights)

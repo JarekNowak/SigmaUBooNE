@@ -23,8 +23,9 @@
 //  cut that minimises it does not depend on the signal normalisation.
 //
 //  Inputs: BDTInput.root (cross-validated BdtScore, S and B per event) and
-//  SigmaHists.root (GenieSignal, the overlay's own signal through the same
-//  selection) for the PeLEE chain; the Lambda-style numbers are the README
+//  SigmaHists.root (GenieQESignal, the GENIE Sigma0 QE sample through the same
+//  selection, plus GenieOvlNonQE, the overlay's own non-QE signal; GenieSignal,
+//  the overlay's whole signal, before 2026-10-30) for the PeLEE chain; the Lambda-style numbers are the README
 //  operating point and are typed in below.
 //
 //  With plotFile set, also draws the median limit against f for both models
@@ -54,11 +55,15 @@ namespace {
 const double CL = 0.90;
 
 // ── Lambda-style operating point (README "Operating point", ExtFactor.C) ──────
-//  two planes, photon gap on. GENIE from the hyperon sample, which holds 1.32x
-//  the plain overlay's in-FV Sigma0 per POT (README "The three signal samples
-//  disagree"); the GENIE column below uses the overlay normalisation, the one
-//  the PeLEE chain is measured with, so the two chains face the same model.
-const double LS_SG_HYP = 1.33,  LS_SG_ERR = 0.16;   // 69 raw
+//  two planes, photon gap on. GENIE from the GENIE Sigma0 QE sample (2026-10-30,
+//  isl_sig_genie_qe.root, 956 raw), whose in-FV rate matches the plain overlay's own
+//  QE Sigma0 to 1%; the overlay's non-QE Sigma0 (0.8%) are left out. The previous
+//  hyperon sample gave 1.33 +- 0.16 (69 raw) but holds only 754 distinct
+//  interactions, each ~20 times, and 1.32x the overlay's rate per POT.
+//  x 0.934, the PPFX CV weight on the signal (PpfxMap.C), as the PeLEE chain applies
+//  it; the hypana background carries no PPFX weight (~6% conservative).
+const double LS_SG     = 0.896 * 0.934, LS_SG_ERR = 0.029 * 0.934;  // 956 raw
+const double LS_SG_OLD = 1.33 / (110.1 / 83.3);     // previous sample, overlay-normalised
 const double LS_SN     = 0.142, LS_SN_ERR = 0.009;  // 245 raw, flux-weighted
 const double LS_BMC    = 3.76,  LS_BMC_ERR = 0.78;  // 23 raw
 const double LS_EXT    = 0.62,  LS_EXT_ERR = 0.27;  // factorised
@@ -66,7 +71,6 @@ const double LS_EXT    = 0.62,  LS_EXT_ERR = 0.27;  // factorised
 //  with signalOnly=false, flux-weighted, 37 raw. The PeLEE B carries the same
 //  component as "hyperons".
 const double LS_HYP    = 0.0207, LS_HYP_ERR = 0.0034;
-const double GENIE_HYP_OVER_OVERLAY = 110.1 / 83.3;
 //  Dirt is not in hypana format. PeLEE dirt/overlay is 8.7% at MuonCandidate
 //  and 0.6% after the BDT; the upper end bounds the Lambda-style dirt.
 const double LS_DIRT_MAX = 0.087 * LS_BMC;
@@ -224,11 +228,23 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
     }
   }
   double genie = -1, genieErr = 0, nPredG = 0, nPredN = 0;   // nPred: in-FV signal, AllEvents
+  double genieOvl = -1, genieOvlErr = 0;
+  const char* genieSrc = "overlay";
   {
     TFile f(hists);
     TH1D* h = (TH1D*)f.Get("GenieSignal");
     if (h) { const int b = h->GetXaxis()->FindBin("BDTG"); genie = h->GetBinContent(b); genieErr = h->GetBinError(b);
              nPredG = h->GetBinContent(h->GetXaxis()->FindBin("AllEvents")); }
+    genieOvl = genie; genieOvlErr = genieErr;
+    //  QE sample + overlay non-QE, when SigmaSelection.C had the QE sample
+    TH1D* hq = (TH1D*)f.Get("GenieQESignal"); TH1D* hn2 = (TH1D*)f.Get("GenieOvlNonQE");
+    if (hq && hn2 && hq->GetBinContent(hq->GetXaxis()->FindBin("AllEvents")) > 0) {
+      const int b = hq->GetXaxis()->FindBin("BDTG"), a = hq->GetXaxis()->FindBin("AllEvents");
+      genie = hq->GetBinContent(b) + hn2->GetBinContent(b);
+      genieErr = std::hypot(hq->GetBinError(b), hn2->GetBinError(b));
+      nPredG = hq->GetBinContent(a) + hn2->GetBinContent(a);
+      genieSrc = "QE sample + overlay non-QE";
+    }
     TH1D* hn = (TH1D*)f.Get("AllEvents/NTracksSigmaAllEvents");
     if (hn) nPredN = hn->Integral(0, hn->GetNbinsX() + 1);
   }
@@ -236,24 +252,24 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
   const Yield y = yieldAt(sig, bkg, bdtCut);
   const double ratioGN = genie / y.S;   // valid at the cut SigmaSelection.C was run with
   printf("\n== PeLEE BDT chain, BDTG > %.3f ==\n", bdtCut);
-  printf("  S NuWro %.3f (%ld raw)  S GENIE overlay %.3f +- %.3f  ->  GENIE/NuWro %.2f\n",
-         y.S, y.rawS, genie, genieErr, ratioGN);
+  printf("  S NuWro %.3f (%ld raw)  S GENIE (%s) %.3f +- %.3f  ->  GENIE/NuWro %.2f   [overlay alone %.3f +- %.3f]\n",
+         y.S, y.rawS, genieSrc, genie, genieErr, ratioGN, genieOvl, genieOvlErr);
   printf("  in-FV signal at AllEvents: NuWro %.2f  GENIE %.2f\n", nPredN, nPredG);
   printf("  B %.2f: hyperons %.2f (%ld)  overlay %.2f (%ld)  dirt %.2f (%ld)  EXT %.2f (%ld) raw; MC stat %.2f%%\n",
          y.B, y.C[1], y.raw[1], y.C[2], y.raw[2], y.C[3], y.raw[3], y.C[5], y.raw[5], 100 * std::sqrt(y.B2) / y.B);
 
-  const double sGls = LS_SG_HYP / GENIE_HYP_OVER_OVERLAY;
+  const double sGls = LS_SG;
   const double bLs = LS_BMC + LS_EXT + LS_HYP;
   const double rLs = std::sqrt(LS_BMC_ERR * LS_BMC_ERR + LS_EXT_ERR * LS_EXT_ERR + LS_HYP_ERR * LS_HYP_ERR) / bLs;
   printf("\n== Lambda-style chain (two planes, gap) ==\n");
-  printf("  S NuWro %.3f  S GENIE %.3f (hyperon sample %.2f / %.3f)  B %.2f (%.2f MC + %.2f EXT + %.3f hyperons), MC stat %.1f%%\n",
-         LS_SN, sGls, LS_SG_HYP, GENIE_HYP_OVER_OVERLAY, bLs, LS_BMC, LS_EXT, LS_HYP, 100 * rLs);
+  printf("  S NuWro %.3f  S GENIE %.3f (QE sample; previous hyperon sample %.3f)  B %.2f (%.2f MC + %.2f EXT + %.3f hyperons), MC stat %.1f%%\n",
+         LS_SN, sGls, LS_SG_OLD, bLs, LS_BMC, LS_EXT, LS_HYP, 100 * rLs);
 
   // ── 3. expected limits per chain and background systematic
   const double fs[4] = {0.0, 0.07, 0.15, 0.30};
   printf("\n== Expected 90%% CL limits on mu (rate / model), background-only median ==\n");
   const Row pe = { "PeLEE BDT", y.S, std::sqrt(y.S2) / y.S, genie, genieErr / genie, y.B, std::sqrt(y.B2) / y.B };
-  const Row ls = { "Lambda-style", LS_SN, LS_SN_ERR / LS_SN, sGls, LS_SG_ERR / LS_SG_HYP, bLs, rLs };
+  const Row ls = { "Lambda-style", LS_SN, LS_SN_ERR / LS_SN, sGls, LS_SG_ERR / LS_SG, bLs, rLs };
   printChain(pe, g, fs, 4, nPredN, nPredG);
   printChain(ls, g, fs, 4);
 
@@ -266,9 +282,9 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
   auto lsVar = [&](const char* tag, double B, double rB, double gg, double sG){
     const double rBt = std::sqrt(rB * rB + 0.15 * 0.15);
     const Exp eN = expected(B, rBt, std::hypot(gg, LS_SN_ERR / LS_SN));
-    const Exp eG = expected(B, rBt, std::hypot(gg, LS_SG_ERR / LS_SG_HYP));
+    const Exp eG = expected(B, rBt, std::hypot(gg, LS_SG_ERR / LS_SG));
     const double aN = ulBayes(B, model(B, rBt, std::hypot(gg, LS_SN_ERR / LS_SN)));
-    const double aG = ulBayes(B, model(B, rBt, std::hypot(gg, LS_SG_ERR / LS_SG_HYP)));
+    const double aG = ulBayes(B, model(B, rBt, std::hypot(gg, LS_SG_ERR / LS_SG)));
     printf("  %-44s %8.2f %4d   %6.1f / %5.2f   %6.1f / %5.2f\n", tag, B, quantile(B, 0.5),
            eN.med / LS_SN, eG.med / sG, aN / LS_SN, aG / sG);
   };
@@ -277,7 +293,7 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
   lsVar("with dirt at its bound (+0.33 +- 0.33)", bLs + LS_DIRT_MAX,
         std::hypot(rLs * bLs, LS_DIRT_MAX) / (bLs + LS_DIRT_MAX), g, sGls);
   lsVar("no signal normalisation systematic (g = 0)", bLs, rLs, 0.0, sGls);
-  lsVar("GENIE at the hyperon-sample normalisation", bLs, rLs, g, LS_SG_HYP);
+  lsVar("GENIE from the previous hyperon sample", bLs, rLs, g, LS_SG_OLD);
   lsVar("background known exactly (rMC = 0)", bLs, 0.0, g, sGls);
 
   // ── 5. PeLEE BDT cut chosen by the limit, against the counting FoM

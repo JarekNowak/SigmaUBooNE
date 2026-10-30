@@ -6,8 +6,8 @@ formats, different samples, separate inputs and outputs — and can be run side 
 | chain | format | signal MC | S | B | purity | role |
 |---|---|---|---|---|---|---|
 | `SigmaSelection.C` + BDT | PeLEE | NuWro run3b | 2.11 | 382 | 0.55% | **the analysis**: the only chain that can see data, EXT and dirt |
-| `DumpBDTHyp.C` + BDT | hypana | GENIE | 20.2 | 712 | 2.8% | truth studies; candidate purity, backtracking |
-| `SigmaLambdaSel.C` | hypana | GENIE | 1.33 | 4.38 (3.76 MC + 0.62 EXT) | **23%** | **best performing**; needs wire activity: MC + factorised EXT, no data or dirt yet (NuWro: S 0.142) |
+| `DumpBDTHyp.C` + BDT | hypana | GENIE | 17.1 | 733 | 2.3% | truth studies; candidate purity, backtracking |
+| `SigmaLambdaSel.C` | hypana | GENIE | 0.90 | 4.38 (3.76 MC + 0.62 EXT) | **17%** | highest purity; needs wire activity: MC + factorised EXT, no data or dirt yet (NuWro: S 0.142) |
 
 NuWro yields include hyperon FSI and GENIE yields do not, a model difference of roughly
 4x in the Σ⁰ rate (see "The three signal samples disagree on the absolute Σ⁰ rate"),
@@ -49,7 +49,7 @@ force a clean rebuild), and macro output is block-buffered, so a crashed run lea
 
 Sigma0 selection on standard PeLEE ntuples (tree
 `nuselection/NeutrinoSelectionFilter`), NuWro hyperon-enhanced signal + all six RHC
-overlay runs (Run 1+2+3+4a+4b+4c) + RHC dirt + run3b NuMI EXT + NuWro fake-data, with a gradient-boosted BDT
+overlay runs (Run 1+2+3+4a+4b+4c) + RHC dirt + run3b NuMI EXT + GENIE Σ⁰ QE fake data, with a gradient-boosted BDT
 as the final discriminant under two-fold cross-validation (folds trained on even/odd
 event numbers, each applied to the events it did not train on). All work is in
 `pelee/`; run from there:
@@ -311,6 +311,15 @@ Out of sample, the 53-variable configuration, means of split seeds 100 and 7:
   S 19.32, B 670.5 before. The scan peaks at 0.540 (FoM 0.7496), but the plateau runs from 0.39
   to 0.59 within 1.5%. The peak inside it is noise: the post-processed tree put it at 0.434.
 
+**Retrained on the GENIE Σ⁰ QE sample (2026-10-30).** `DumpBDTHyp.C` now takes its signal
+from `lists/sig_genie_qe.list`: TreeS 3,043 → 47,033, TreeB unchanged (123,000). The old tree
+is `BDTHyp.root.oldgenie`. Out of sample, seeds 100 / 7: AUC **0.855 / 0.855** (was 0.834),
+peak FoM 0.626 / 0.634 at ×2.02 over the preselection (was ×1.80). The ablation ordering is
+unchanged (full 0.855, no connectedness block 0.845, no block and no showers 0.754). At the
+kept cut 0.554: S 17.13, B 733.2, purity 2.28%, FoM 0.6253; the scan peaks at 0.608 (S 14.30,
+B 504.0, FoM 0.6280), and the plateau runs from 0.46 to 0.66 within 1.5%. S is lower than
+before because the QE sample's normalisation is 0.74× the old sample's.
+
 `TrainAllPFP.C` and `TrainBDTSplit.C` had the same default split and are fixed too.
 `TrainAllPFP.C` (on the PeLEE tree) does not change: the curated set gives AUC 0.845 with
 the half fold and 0.844 with 95%. The union with the per-PFP block is still 4% better in FoM
@@ -347,8 +356,11 @@ events that fake a Lambda, none contained a true pi-.
 
 ### Measured dead ends
 
-- **More signal MC does not help.** The out-of-sample AUC did not move when the signal
-  sample grew 25%.
+- ~~**More signal MC does not help.**~~ *Overturned 2026-10-30.* The AUC did not move when
+  the old GENIE sample grew 25%, but that sample was 754 distinct interactions overlaid ~20
+  times, so the growth added copies. With the GENIE Σ⁰ QE sample (47,033 signal events at
+  `MuonCandidate`, all distinct) the AUC goes 0.834 → 0.855 and the BDT's gain over the
+  preselection FoM ×1.80 → ×2.02. The BDTs here are limited by distinct signal interactions.
 - **Lambda displacement variables do not work** at this resolution: 1.85 cm flight
   against 5.54 cm resolution, truth correlation r = −0.014.
 - **Better candidate assignment helps background almost equally**, because the
@@ -380,7 +392,8 @@ background systematics. It follows the Lambda CCQE analysis (Thorpe & Nowak,
 because at equal efficiency that analysis reaches 91% purity against our 2.8%.
 
 ```bash
-root -l -b -q 'SigmaLambdaSel.C("lists/sig_genie.list",0,true)'    # signal, raw counts x 1.9284e-2
+root -l -b -q 'SigmaLambdaSel.C("lists/sig_genie_qe.list",0,true)' # signal, raw counts x 9.37035e-4
+#   (lists/sig_genie.list, x 1.9284e-2, is the previous GENIE hyperon sample: see below)
 root -l -b -q 'SigmaLambdaSel.C("lists/bkg_overlay.list",0,false)' # background, raw counts x 1.6352e-1
 ```
 
@@ -427,6 +440,14 @@ cache to the event:
 | PointingAlpha | 144 | 706 | 2.78 | 115.4 |
 | PhotonGap > 2 cm | 139 | 549 | 2.68 | 89.8 |
 | **Island (≥2 planes)** | **69** | **23** | **1.33 ± 0.16** | **3.76 ± 0.78** |
+
+*Signal column superseded (2026-10-30).* This table's signal is the previous GENIE hyperon
+sample, which holds only 754 distinct Σ⁰ interactions overlaid ~20 times each, at 1.32× the
+overlay's rate (see "The GENIE Σ⁰ QE sample"). The GENIE Σ⁰ QE sample gives **S 0.896 ±
+0.029 (956 raw)** at the two-plane point, purity 19% (17% with EXT); one plane gives 1.343
+(1433 raw). The efficiency at the point is 1.09% of in-FV signal against 1.21% for the
+previous sample, which suggests the island tuning, done on that sample, fitted its few
+hundred interactions.
 
 Purity 26%, absolute efficiency 0.46%, and **98.6% of surviving signal has true Lambda
 flight > 2 cm** (NuWro 93.9%) against 43% in the BDT chain. The displaced-vertex bias
@@ -476,7 +497,9 @@ With a fractional systematic *f* on the background, using S/√(S+B+(fB)²):
 
 The crossover is at f ≈ 3% (the BDT column is the 2026-10-19 retraining; the earlier
 S 19.3, B 670 gave the same crossover), and the technote quotes 30–60% on RES/DIS
-backgrounds. At any
+backgrounds. All signal columns here are the previous GENIE hyperon sample; with the GENIE
+Σ⁰ QE sample the BDT chain gives S 17.1, B 733 (0.625 / 0.294 / 0.151 / 0.077) and the
+Lambda-style point S 0.896, B 3.76 (0.414 at f = 0). At any
 realistic systematic the high-purity chain wins, and the full-statistics background
 does not change that. Every operating point in this repo was
 historically chosen with f = 0, which systematically favoured the BDT chains.
@@ -706,13 +729,15 @@ n ~ Pois(μ·S·e + b).
   PDG table exactly for a known background (2.30, 3.89, 5.32, 6.68, 7.99).
 - **Discovery reach:** Z_A is the median discovery significance (Cowan et al.).
 
-`SigmaSelection.C` now also counts the overlay's own Σ⁰ events through the full selection
-and BDT (`GenieSignal` in `SigmaHists.root`; they stay out of B and out of the BDT trees).
-This gives the PeLEE chain a GENIE signal yield under the same definition: **13.09 ± 1.01 at
-the operating point (187 raw), against 72.6 in the FV, so 18.0% efficiency**. NuWro gives 16.9%.
-That is 6.2× NuWro's 2.11. For the Λ-style chain the GENIE column takes the hyperon-sample
-S = 1.33 and divides by 1.32, the sample's excess over the overlay, giving 1.01. Both chains
-then face the same GENIE.
+**GENIE signal (2026-10-30).** `SigmaSelection.C` runs the GENIE Σ⁰ QE sample through the
+full selection and BDT (`GenieQESignal` in `SigmaHists.root`) and the overlay's own Σ⁰ too
+(`GenieSignal`); neither enters B or the BDT trees. The QE sample gives **13.32 ± 0.11 at the
+operating point (15,142 raw), against 73.6 in the FV, so 18.1% efficiency**; NuWro gives 16.8%
+(weighted). That is 6.31× NuWro's 2.11. The overlay's own Σ⁰ give 13.09 ± 1.01 (187 raw), and
+the two agree to 2% at every cut. The overlay has no non-QE signal: its RES Σ⁰ come with a
+kaon, which the signal definition vetoes, so the QE sample is the whole GENIE prediction.
+For the Λ-style chain, GENIE is the QE sample's 0.896 × 0.934 (the PPFX CV weight, below) =
+0.837; the previous hyperon sample gave 1.33 / 1.32 = 1.01. Both chains face the same GENIE.
 
 The NuWro events whose Σ⁰ was lost to FSI are a background. At the Λ-style point this was
 measured for the first time (`IslandProcess.C` on `sig_nuwro.list` with `signalOnly=false`):
@@ -722,22 +747,28 @@ measured for the first time (`IslandProcess.C` on `sig_nuwro.list` with `signalO
 
 | background syst. f | PeLEE at 0.759: NuWro [16–84%] | GENIE | PeLEE, cut set for this f (cut): NuWro | GENIE | Λ-style: NuWro [16–84%] | GENIE |
 |---|---|---|---|---|---|---|
-| 0% | 18.1 [12.8, 26.2] | 2.95 | 18.2 (0.750) | 2.9 | 36.9 [25.6, 51.9] | 5.33 |
+| 0% | 18.1 [12.8, 26.2] | 2.86 | 18.2 (0.750) | 2.9 | 36.9 [25.6, 51.9] | 6.22 |
 | 5% | | | 22.6 (0.850) | 3.6 | | |
-| 7% | 28.5 [22.5, 36.3] | 4.65 | | | 37.1 | 5.35 |
-| 10% | | | 26.8 (0.875) | 4.3 | | |
-| 15% | 48.2 [41.4, 56.2] | 7.88 | 31.1 (0.890) | 5.0 | 37.6 [25.9, 52.7] | 5.43 |
-| 30% | 82.3 [74.4, 90.9] | 13.45 | 39.9 (0.925) | 6.4 | 39.3 [26.9, 54.8] | 5.68 |
+| 7% | 28.5 [22.5, 36.3] | 4.51 | | | 37.1 | 6.25 |
+| 10% | | | 26.8 (0.875) | 4.2 | | |
+| 15% | 48.2 [41.4, 56.2] | 7.63 | 31.1 (0.890) | 4.9 | 37.6 [25.9, 52.7] | 6.34 |
+| 30% | 82.3 [74.4, 90.9] | 13.02 | 39.9 (0.925) | 6.3 | 39.3 [26.9, 54.8] | 6.63 |
+
+GENIE columns as of 2026-10-30 (GENIE Σ⁰ QE sample). Before, with the overlay's own Σ⁰ for
+PeLEE and the previous hyperon sample for the Λ-style chain, they read 2.95 / 5.33 at f = 0
+and 13.45 / 5.68 at 30%.
 
 - **Where the "cut set for f" columns come from:** a scan of `BDT_MIN` from 0.50 to 0.95
   minimising the limit at n = B (Asimov), on the same cross-validated scores.
-- **How they convert to GENIE:** GENIE = NuWro / 6.20, the ratio measured at 0.759.
+- **How they convert to GENIE:** GENIE = NuWro / 6.31, the ratio measured at 0.759.
 - **The 30% row:** it relies on few raw EXT events, so its error is large. The 0.925 point
   keeps none. A component with no raw events left is given one event of its own weight as
   its error.
 - **The limit on the event count is model-independent.** At 0.759 and f = 0, μ_UL times each
-  model's in-FV count gives 227 (NuWro) and 214 (GENIE). They agree to 6% because the two
-  efficiencies do.
+  model's in-FV count gives 227 (NuWro) and 211 (GENIE). They agree to 7% because the two
+  efficiencies do (16.8% and 18.1%). That 7% is the generator dependence of the efficiency,
+  and the fake-data slot shows it directly: the GENIE sample read as data and corrected with
+  NuWro's efficiency overestimates its own in-FV rate by about 8%.
 
 What it says:
 
@@ -745,14 +776,16 @@ What it says:
    model rate is 0.63σ, for GENIE with f = 0 in the PeLEE chain; under NuWro it is about 0.1σ.
    - The best expected limit is about 3× GENIE, or 18× NuWro.
    - In events, that is ~220 in-FV ν̄μ CC Σ⁰ in 1.15e21 POT. GENIE predicts 73 and NuWro 13.
-2. **Under a common signal model the PeLEE chain is better than the Λ-style chain below
-   f ≈ 20%, and the two are within 10% of each other from 20 to 30%.**
-   - With its cut set for the systematic it is 2.0× better at f = 0, 1.4× at 10% and 1.2× at
-     15% (NuWro; GENIE gives 1.8×, 1.2× and 1.1×).
-   - From 20 to 30% the model decides (Poisson medians at the re-chosen cut, from the
-     `limit_vs_f` pass). Under NuWro the PeLEE chain stays ahead (38.2 against 39.3 at 30%).
-     Under GENIE the Λ-style chain is ahead (5.7 against 6.2 at 30%), because the two
-     chains' GENIE/NuWro ratios differ: 6.2 for PeLEE against 7.1 for Λ-style.
+2. **Under a common signal model the PeLEE chain, with its cut set for the systematic, is
+   better than the Λ-style chain at every f up to 30%, under both generators.**
+   - It is 2.0× better at f = 0, 1.4× at 10% and 1.2× at 15% (NuWro; GENIE gives 2.2×, 1.5×
+     and 1.3×).
+   - At 30% the two are close (Poisson medians at the re-chosen cut, from the `limit_vs_f`
+     pass): 38.2 against 39.3 under NuWro, 6.05 against 6.63 under GENIE.
+   - Until 2026-10-30 GENIE favoured the Λ-style chain above f ≈ 20% (5.7 against 6.2 at
+     30%). That came from the previous hyperon sample, whose efficiency at the Λ-style point
+     was 11% higher than the QE sample's. The two chains' GENIE/NuWro ratios are now 6.31
+     (PeLEE) and 5.89 (Λ-style), against 6.20 and 7.08 before.
    - The Λ-style chain's 23% purity is real, but its signal yield is 15× lower (S 0.142 against
      2.11 under NuWro).
    - At B ≈ 4.4 its limit is set by Poisson counting, not by the background. Removing all
@@ -794,7 +827,9 @@ Every $S$ and $B$ in this repo is the expected count in the full RHC dataset,
 
 | sample | format | generated POT | scale |
 |---|---|---|---|
-| GENIE hyperon signal, `sig_genie.list` (4851 files) | hypana | 5.9770e22 | 1.9284e-2 |
+| GENIE Σ⁰ QE signal, `sig_genie_qe.list` (2506 files) | hypana | 1.23005e24 | 9.37035e-4 |
+| GENIE Σ⁰ QE signal, `Hyperons_Genie_run3b_WithCR_pelee_2506.root` | PeLEE | 1.23005e24 | 9.37035e-4 |
+| &nbsp;&nbsp;— previous GENIE hyperon sample, `sig_genie.list` (4851 files; 754 distinct Σ⁰) | hypana | 5.9770e22 | 1.9284e-2 |
 | RHC overlay background, `bkg_overlay.list` (14,164 files) | hypana | 7.0488e21 | 1.6352e-1 |
 | &nbsp;&nbsp;— Run 3 slice only, `bkg_overlay_run3.list` (3491 files) | hypana | 2.7795e21 | 4.1468e-1 |
 | NuWro Σ⁰ signal, `sig_nuwro.list` (2500 files) | hypana | 1.3394e24 | 8.6053e-4 |
@@ -908,6 +943,60 @@ hypana chain (`HypCutFlow.C`, signal pass only), with the flux weight applied to
 3.4x the raw survivors (11,958 against 3,545). Candidate purity improves slightly
 (muon 95.2→96.0%, proton 66.6→67.2%, pion 43.1→43.5%, photon 73.1→75.1%).
 
+### The GENIE Σ⁰ QE sample (2026-10-30)
+
+The GENIE twin of the NuWro run3b production (`~/MicroBooNE/production/nuwro_prod/`, sample
+`genie_rhc_run3b`): GENIE `LambdaCCQE` (Pais ΔS = 1 quasi-elastic) with tune G18_10a_02_11a,
+the official dk2nu RHC flux on the current g4 10.4 geometry (so no flux weight), a primary
+Σ⁰ selected at generation, and the same overlay chain on run3b EXT, with no EXT event shared
+with the NuWro production. There are 2506 jobs of 100 events, 1.23005e24 POT (4.91e18 POT
+per Σ⁰), and every job finished. Generation was 1.525M QE hyperon events: Λ 42.7%, Σ⁻ 40.3%,
+Σ⁰ 16.7%.
+
+- hypana: `lists/sig_genie_qe.list`. PeLEE: `.../ana/Hyperons_Genie_run3b_WithCR_pelee_2506.root`
+  (250,555 entries, 236,331 ν̄μ CC Σ⁰). It carries `mc_px`, so the truth muon threshold
+  applies to it, unlike NuWro.
+- `SampleCompare.C` compares samples at truth level: rate by interaction mode, hyperon
+  composition, and the shapes of Q², p_μ, p_Σ, p_γ and the Λ flight.
+
+**Its normalisation is right.** In-FV ν̄μ CC Σ⁰ per 1.1526e21 POT (hypana truth, no PPFX):
+
+| sample | in-FV Σ⁰ | non-QE share | shape vs the QE sample (Pearson χ²/ndf: Q², p_μ, p_Σ) |
+|---|---|---|---|
+| **GENIE Σ⁰ QE sample** | **81.85 ± 0.28** | 0 | — |
+| plain RHC overlay (GENIE, 510 raw) | 83.39 ± 3.69 | 0.8% (RES) | 19/14, 23/21, 39/19 |
+| previous GENIE hyperon sample | 110.13 ± 1.46 | 3.0% (RES) | 864/27, 1229/37, 724/31 |
+| NuWro (FSI, flux-weighted) | 12.82 ± 0.09 | — | 3250/34, 628/39, 4223/37 |
+
+The QE sample matches the overlay's own Σ⁰ in rate (0.98 ± 0.04) and in Q², p_μ and Λ flight;
+p_Σ is 2.5σ off (mean 0.620 against 0.653 GeV/c on 510 events). In the PeLEE chain, with the
+PPFX CV weight below, it matches the overlay's signal to 2% at every cut, and after the BDT
+(13.32 against 13.09 ± 1.01).
+
+**The previous GENIE hyperon sample (`sig_genie.list`) is not usable as a signal model.** Its
+15,341 ν̄μ Σ⁰ events are **754 distinct interactions, each overlaid ~20 times** on different
+cosmics (by identical lepton momentum, hyperon momentum and Q²; the QE sample has 28,279 of
+28,279 distinct). Its spectra are therefore spiky, its statistics overstate the information
+by ~20×, and its rate per POT is 1.32× the overlay's. Its harder muon spectrum (⟨p_μ⟩ 1.08
+against 0.99 GeV/c) points to a different flux. Every parity split on it (hypana BDT folds,
+`IslandXVal.C`, the island tuning) had copies of the same interactions on both sides. Results
+that used it, now redone with the QE sample: the Λ-style GENIE yield (1.33 → 0.896), the
+GENIE columns of the sensitivity, and the hypana BDT. The duplicate count is `DupGen.C`.
+
+**PPFX CV weight.** The PeLEE overlay carries `ppfx_cv` (the PPFX flux correction), which a
+hepmc-input sample cannot have (`ppfx_cv = -1`, no flux-parent record). `PpfxMap.C` measures
+⟨ppfx_cv⟩ against true E_ν for ν̄μ CC in the FV over all RHC overlay runs
+(`ppfx_numubar_map.root`: 0.90 at 0.6 GeV rising to 1.00 at 3 GeV). On the overlay's own Σ⁰
+the map predicts 0.934 against 0.938 measured. `SigmaSelection.C` applies it to the QE
+sample (`ppfxMap` in `FileDesc`); without it the QE sample sat 8.6% above the overlay.
+
+**Fake data.** The QE sample replaces NuWro in the fake-data slot, so the "Data" column is now
+a second generator. At the operating point it holds 13.40 events (13.32 of them true in-FV
+signal).
+
+**GENIE FHC** (`genie_fhc_run1`) is being generated (started 2026-10-29); a 100-event test gave
+24 Σ⁰ in 8.28e19 POT, 3.4e18 POT per Σ⁰ against 4.9e18 for RHC.
+
 ### The three signal samples disagree on the absolute Σ⁰ rate
 
 Measured with one truth definition (`mc_hyperon_pdg==3212 && mc_nu_pdg==-14 && CC`) and
@@ -916,7 +1005,8 @@ one fiducial volume, Σ⁰ events per 1.1526e21 POT with the true vertex in the 
 | sample | in-FV Σ⁰ per full-RHC POT | vs the plain overlay |
 |---|---|---|
 | plain RHC overlay, `bkg_overlay.list` (unfiltered, trustworthy POT) | 83.3 | 1.00 |
-| GENIE hyperon sample, `sig_genie.list` | 110.1 | 1.32 |
+| GENIE hyperon sample, `sig_genie.list` (754 distinct Σ⁰, see above) | 110.1 | 1.32 |
+| GENIE Σ⁰ QE sample, `sig_genie_qe.list` (2026-10-30) | 81.9 | 0.98 |
 | NuWro run3b, POT scale only | 18.9 | 0.23 |
 | NuWro run3b, with the 0.677 flux weight | 12.8 | **0.15** |
 
@@ -965,8 +1055,11 @@ The 6.5× gap in *surviving* Σ⁰ then decomposes exactly:
 | residual production-rate difference | 1.05× |
 | product | 6.51× (measured 6.51×) |
 
-**What is still open** is the residual ~1.3–1.6x between the GENIE hyperon sample, the
-GENIE overlay and the Λ paper's own GENIE prediction — the 1.61x of the Λ cross-check.
+**Resolved (2026-10-30):** the ~1.3x between the GENIE hyperon sample and the GENIE overlay
+belonged to the hyperon sample (754 distinct interactions, a different flux); the GENIE Σ⁰
+QE sample agrees with the overlay to 2%. **Still open** is the 1.61x of the Λ cross-check
+against the Λ paper's own GENIE prediction, which was measured on the hyperon sample and
+should be redone.
 Practical consequence: a Σ⁰ yield quoted from the NuWro sample is a yield *with* hyperon
 FSI and one from the GENIE samples is a yield *without* it, and the difference between
 them is a model choice of roughly a factor of four, not a bug to be fixed. The measured

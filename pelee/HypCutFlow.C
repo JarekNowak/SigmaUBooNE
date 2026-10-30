@@ -3,7 +3,8 @@
 //  chain, in the same shape as the PeLEE table that SigmaSelection.C prints.
 //
 //  Runs BOTH samples in one pass and scales each by its own generated POT:
-//    signal      lists/sig_genie.list   true Sigma0 CC anti-numu only
+//    signal      lists/sig_genie_qe.list true Sigma0 CC anti-numu only (GENIE Sigma0 QE
+//                sample, 2026-10-30; lists/sig_genie.list is the previous hyperon sample)
 //    background  lists/bkg_overlay.list everything that is not that
 //  matching exactly how DumpBDTHyp.C splits the two, so the numbers line up
 //  with the BDT training tree.
@@ -70,9 +71,9 @@ static std::vector<std::string> loadList(const char* p){
 //  bkgPOT=2.7795e21 to reproduce the Run 3-only numbers.
 //  fluxWeights: pass the NuWro table (see above) when sigList is lists/sig_nuwro.list.
 //  Leave it empty for the GENIE signal, which is already on the current flux.
-void HypCutFlow(const char* sigList="lists/sig_genie.list",
+void HypCutFlow(const char* sigList="lists/sig_genie_qe.list",
                 const char* bkgList="lists/bkg_overlay.list",
-                double sigPOT=5.9770e22, double bkgPOT=7.0488e21,
+                double sigPOT=1.23005e24, double bkgPOT=7.0488e21,
                 bool requireProtonPion=false,
                 const char* fluxWeights="")
 {

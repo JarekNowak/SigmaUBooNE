@@ -22,6 +22,7 @@
 #include "TLeaf.h"
 #include "TTree.h"
 #include "TH1D.h"
+#include "TProfile.h"
 #include "TH2D.h"
 #include "TDirectory.h"
 #include "TVector3.h"
@@ -180,6 +181,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     bool  truthFV;       // also require true_nu_vtx in FV (signal/hyperon MC)
     bool  isData;        // reset ppfx/weightTune/weightSpline to 1
     bool  fluxRW;        // NuWro: weight onto the current NuMI flux (see FluxRW)
+    bool  ppfxMap = false; // no flux-parent record: PPFX CV weight from the overlay's E_nu map
   };
 
   //  Signal: the run3b NuWro Sigma0 production (2500 overlay jobs on swizzled
@@ -190,6 +192,12 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   const std::string SIG =
     "/data/uboone/prod_nuwro_sigmazero_overlay_numi_rhc_run3b_extunbiased_mcc9/ana/Hyperons_Nuwro_run3b_WithCR_pelee_2500.root";
 
+  //  GENIE Sigma0 QE sample (2026-10-30): GENIE LambdaCCQE with a primary Sigma0
+  //  selected, official dk2nu RHC flux (current g4 10.4, no flux weight), same overlay
+  //  chain on run3b EXT, 2506 jobs. QE only: the overlay's non-QE Sigma0 are 0.8% of
+  //  its signal. Its in-FV rate agrees with the overlay's own QE Sigma0 to 1%.
+  const std::string GENIE_QE =
+    "/data/uboone/prod_genie_sigmazero_overlay_numi_rhc_run3b_extunbiased_mcc9/ana/Hyperons_Genie_run3b_WithCR_pelee_2506.root";
   const std::string NUMI = "/data/uboone/new_numi_flux/";
   const std::string DIRT = "/data/uboone/temp/custom_pelee_ntuples/dirt_overlay/";
   std::vector<FileDesc> files = {
@@ -215,11 +223,11 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     // 5 EXT — NuMI beam-off, run3b (cosmic-only data: no truth, no CV weights)
     { "/data/uboone/EXT/neutrinoselection_filt_run3b_beamoff.root",   5, false, true,  false },
     // ── Fake-data slot ───────────────────────────────────────────────────────
-    //  NuWro hyperon sample reused as the "data" sample (reco cuts only).  A
-    //  true generator-closure test needs a DIFFERENT-generator (genie) hyperon
-    //  PeLEE ntuple, which does not yet exist locally — swap this one line when
-    //  it does, and flip isData=true for real beam-on data.
-    { SIG,                                                             4, false, false, true }, // 4 fake data
+    //  The GENIE Sigma0 QE sample as the "data" (reco cuts only): a generator-
+    //  closure test against the NuWro signal model. Until 2026-10-30 this slot held
+    //  the NuWro sample itself. Its true in-FV signal is also counted apart
+    //  (GenieQE) as the GENIE signal prediction. Flip isData=true for beam-on data.
+    { GENIE_QE,                                                        4, false, false, false, true }, // 4 fake data + GENIE QE signal
   };
 
   // ── POT / normalization (editable block) ─────────────────────────────────────
@@ -255,6 +263,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   const double signalPOT = 1.3394e24;
   const double bkgPOT    = 1.5463292e22; // sum of all 6 RHC overlay runs
   const double dirtPOT   = 1.7409194e21;
+  const double genieQEPOT = 1.23005e24;  // GENIE Sigma0 QE sample, summed SubRun pot, 250555 entries
   const double dataTrig  = dataPOT * 23534937.0 / 1.10823e21;   // 2.4477e7
   const double extGates  = 32649128.65;
 
@@ -280,7 +289,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   Scale[1] = dataPOT / signalPOT;  // other hyperons (same file)
   Scale[2] = dataPOT / bkgPOT;     // background overlay
   Scale[3] = dataPOT / dirtPOT;    // dirt
-  Scale[4] = dataPOT / signalPOT;  // fake data (NuWro)
+  Scale[4] = dataPOT / genieQEPOT; // fake data (GENIE Sigma0 QE)
   Scale[5] = dataTrig / extGates;  // EXT beam-off
   if (detvar) Scale[0] = Scale[2] = dataPOT / dvPOT;
 
@@ -448,6 +457,12 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   //  the GENIE prediction for the same signal definition and selection.
   double OvlSig[Nc] = {0}, OvlSigW2[Nc] = {0};
   long   OvlSigRaw[Nc] = {0};
+  //  ... of which quasi-elastic (interaction 0), for the check against the QE sample
+  double OvlSigQE[Nc] = {0}, OvlSigQEW2[Nc] = {0};
+  long   OvlSigQERaw[Nc] = {0};
+  //  The GENIE Sigma0 QE sample's true in-FV signal (fake-data slot), same definition.
+  double GenieQE[Nc] = {0}, GenieQEW2[Nc] = {0};
+  long   GenieQERaw[Nc] = {0};
   std::unordered_set<unsigned long long> seenData;   // run/sub/evt of data events read
 
   // ── Branch variables (declared once, reused across files) ───────────────────
@@ -503,6 +518,17 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
 
   //  Flux reweight map, loaded once; only files with fd.fluxRW use it.
   FluxRW frw; frw.load("rhc");
+  //  PPFX CV weight for samples generated without a flux-parent record (the GENIE
+  //  Sigma0 QE sample: hepmc input, ppfx_cv = -1). The overlay applies ppfx_cv to
+  //  every event; its mean against true E_nu for numubar CC in the true FV (all RHC
+  //  overlay runs, ppfx_numubar_map.root) stands in for it. On the overlay's own
+  //  Sigma0 signal the map predicts <ppfx_cv> 0.934 against 0.938 measured.
+  TProfile* ppfxMapP = nullptr;
+  { TFile* fm = TFile::Open("ppfx_numubar_map.root");
+    if (fm && !fm->IsZombie()) { ppfxMapP = (TProfile*)fm->Get("ppfx_numubar_cc");
+      if (ppfxMapP) ppfxMapP->SetDirectory(nullptr); }
+    delete fm;
+    if (!ppfxMapP) std::cout << "  WARNING: ppfx_numubar_map.root not readable -- GENIE QE sample left without the PPFX CV weight\n"; }
 
   // ── File loop ───────────────────────────────────────────────────────────────
   for (size_t i_f = 0; i_f < files.size(); i_f++) {
@@ -644,7 +670,12 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
       if (fd.isData) { pf = wt = ws = 1.0; }
       const double w_flux = fd.fluxRW
         ? frw.w(nu_pdg, nu_e, true_nu_px, true_nu_py, true_nu_pz) : 1.0;
-      const double w_cv = safeWeight(pf * wt * ws) * w_flux;
+      double w_ppfx = 1.0;
+      if (fd.ppfxMap && ppfxMapP) {
+        const int b = std::min(std::max(ppfxMapP->FindBin(nu_e), 1), ppfxMapP->GetNbinsX());
+        if (ppfxMapP->GetBinEntries(b) > 0) w_ppfx = ppfxMapP->GetBinContent(b);
+      }
+      const double w_cv = safeWeight(pf * wt * ws) * w_flux * w_ppfx;
 
       // ── Signal truth flag (Sigma0 in anti-nu_mu CC) ──────────────────────────
       //  Photons are NOT stored in mc_pdg, so the Sigma0->Lambda+gamma signature
@@ -1057,7 +1088,15 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
 
       int cmax = -1;
       for (int c = 0; c < Nc; c++) { if (Cuts[c]) cmax = c; else break; }
-      if (ovlSig) { for (int c = 0; c <= cmax; c++) { OvlSig[c] += W; OvlSigW2[c] += W * W; OvlSigRaw[c]++; } continue; }
+      if (ovlSig) {
+        for (int c = 0; c <= cmax; c++) { OvlSig[c] += W; OvlSigW2[c] += W * W; OvlSigRaw[c]++; }
+        if (interaction == 0)
+          for (int c = 0; c <= cmax; c++) { OvlSigQE[c] += W; OvlSigQEW2[c] += W * W; OvlSigQERaw[c]++; }
+        continue;
+      }
+      //  GENIE QE signal: counted here, and still filled below as fake data.
+      if (s == 4 && IsSignal && SigmaFV::isFiducial(true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z))
+        for (int c = 0; c <= cmax; c++) { GenieQE[c] += W; GenieQEW2[c] += W * W; GenieQERaw[c]++; }
       if (dvT) {
         dvRun = run; dvSub = sub; dvEvt = evt; dvNuE = nu_e; dvSig = (s == 0);
         dvCmax = cmax; dvBdtg = bdtg; dvW = W; dvT->Fill();
@@ -1162,12 +1201,38 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
               << std::setw(9) << std::setprecision(2) << (OvlSig[0] > 0 ? 100.0 * OvlSig[c] / OvlSig[0] : 0.0)
               << std::setw(13) << std::setprecision(3) << (Selected[c][0] > 0 ? OvlSig[c] / Selected[c][0] : 0.0) << "\n";
   std::cout << "======================================================================\n";
+
+  // ── GENIE Sigma0 QE sample against the overlay's own QE signal ──────────────
+  std::cout << "\n============ GENIE QE sample vs overlay signal (same definition) ============\n";
+  std::cout << std::left << std::setw(18) << "Cut" << std::right << std::setw(9) << "QE raw"
+            << std::setw(11) << "S_QEsample" << std::setw(8) << "Eff[%]" << std::setw(10) << "ovl QE"
+            << std::setw(8) << "raw" << std::setw(11) << "sample/ovl" << std::setw(11) << "ovl nonQE"
+            << std::setw(12) << "S_GENIE" << std::setw(12) << "GENIE/NuWro" << "\n";
+  for (int c = 0; c < Nc; c++) {
+    const double nonQE = OvlSig[c] - OvlSigQE[c];
+    const double tot = GenieQE[c] + nonQE;
+    std::cout << std::left << std::setw(18) << CutName[c] << std::right << std::setw(9) << GenieQERaw[c]
+              << std::setw(11) << std::fixed << std::setprecision(3) << GenieQE[c]
+              << std::setw(8) << std::setprecision(2) << (GenieQE[0] > 0 ? 100.0 * GenieQE[c] / GenieQE[0] : 0.0)
+              << std::setw(10) << std::setprecision(3) << OvlSigQE[c] << std::setw(8) << OvlSigQERaw[c]
+              << std::setw(11) << (OvlSigQE[c] > 0 ? GenieQE[c] / OvlSigQE[c] : 0.0)
+              << std::setw(11) << nonQE << std::setw(12) << tot
+              << std::setw(12) << (Selected[c][0] > 0 ? tot / Selected[c][0] : 0.0) << "\n";
+  }
+  std::cout << "  S_GENIE = QE sample + overlay non-QE signal. Fake-data slot = the whole QE sample.\n";
+  std::cout << "=============================================================================\n";
   fout->cd();
   TH1D* hGenie = new TH1D("GenieSignal", "GENIE overlay signal per cut (not in B);cut;events", Nc, 0, Nc);
+  TH1D* hGenieQE = new TH1D("GenieQESignal", "GENIE #Sigma^{0} QE sample signal per cut;cut;events", Nc, 0, Nc);
+  TH1D* hOvlNonQE = new TH1D("GenieOvlNonQE", "GENIE overlay non-QE signal per cut;cut;events", Nc, 0, Nc);
   for (int c = 0; c < Nc; c++) {
-    hGenie->GetXaxis()->SetBinLabel(c + 1, CutName[c]);
+    for (TH1D* h : {hGenie, hGenieQE, hOvlNonQE}) h->GetXaxis()->SetBinLabel(c + 1, CutName[c]);
     hGenie->SetBinContent(c + 1, OvlSig[c]);
     hGenie->SetBinError(c + 1, std::sqrt(OvlSigW2[c]));
+    hGenieQE->SetBinContent(c + 1, GenieQE[c]);
+    hGenieQE->SetBinError(c + 1, std::sqrt(GenieQEW2[c]));
+    hOvlNonQE->SetBinContent(c + 1, OvlSig[c] - OvlSigQE[c]);
+    hOvlNonQE->SetBinError(c + 1, std::sqrt(std::max(0.0, OvlSigW2[c] - OvlSigQEW2[c])));
   }
 
   // ── Signal-efficiency / significance diagnostics ────────────────────────────
