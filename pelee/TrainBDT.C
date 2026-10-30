@@ -16,6 +16,14 @@
 //  fold gave AUC 0.896 -> 0.901 and -8% background at 40% signal efficiency, against a
 //  seed-to-seed spread of +-0.001 / +-2% (README, "BDT retrained with EXT").
 //
+//  Signal: TreeS (NuWro) and, since 2026-10-30, TreeG (the GENIE Sigma0 QE sample's
+//  in-FV signal, 43k events), scaled so that its summed weight equals TreeS's
+//  (genieScale < 0; 0 drops it, > 0 is an explicit factor). More distinct signal
+//  helps even when the BDT is judged on NuWro only: AUC 0.9006 -> 0.9048, -5%
+//  background at 40-50% signal efficiency, -9 to -11% on the expected limit at
+//  f = 10-15% (README, "BDT training with GENIE signal").
+//  The inputs in BDTInput.root are already clamped (BDTClamp.h, SigmaSelection.C).
+//
 //  Output: <prefix>_A/weights/*.xml, <prefix>_B/weights/*.xml
 //  Run:    root -l -b -q TrainBDT.C
 //          root -l -b -q 'TrainBDT.C("BDTInput.root", 0.5, "SigmaBDT_half", 1)'   # old split, seed 1
@@ -53,7 +61,8 @@ static const char* kVars[] = {
 
 // Train one fold.  `trainCut` selects the events used for THIS fold's training;
 // the resulting weights are applied (elsewhere) to the complementary events.
-void trainFold(const char* dataset, const char* trainCut, TTree* sig, TTree* bkg, double testFrac, int splitSeed)
+void trainFold(const char* dataset, const char* trainCut, TTree* sig, TTree* bkg, double testFrac, int splitSeed,
+               TTree* gen = nullptr, double genScale = 0)
 {
   TFile* out = TFile::Open(Form("TMVA_%s.root", dataset), "RECREATE");
   TMVA::Factory factory("TMVASigma", out,
@@ -61,6 +70,7 @@ void trainFold(const char* dataset, const char* trainCut, TTree* sig, TTree* bkg
   TMVA::DataLoader loader(dataset);
 
   loader.AddSignalTree(sig, 1.0);
+  if (gen && genScale > 0) loader.AddSignalTree(gen, genScale);
   loader.AddBackgroundTree(bkg, 1.0);
   loader.SetSignalWeightExpression("Weight");
   loader.SetBackgroundWeightExpression("Weight");
@@ -72,7 +82,8 @@ void trainFold(const char* dataset, const char* trainCut, TTree* sig, TTree* bkg
   // nTrain=0 splits the fold in halves; otherwise keep testFrac of it for TMVA's test.
   TString split = "nTrain_Signal=0:nTrain_Background=0";
   if (testFrac < 0.5) {
-    const Long64_t nS = sig->GetEntries(trainCut), nB = bkg->GetEntries(trainCut);
+    const Long64_t nS = sig->GetEntries(trainCut) + ((gen && genScale > 0) ? gen->GetEntries(trainCut) : 0),
+                   nB = bkg->GetEntries(trainCut);
     const Long64_t tS = (Long64_t)(testFrac * nS), tB = (Long64_t)(testFrac * nB);
     split = Form("nTrain_Signal=%lld:nTest_Signal=%lld:nTrain_Background=%lld:nTest_Background=%lld",
                  nS - tS, tS, nB - tB, tB);
@@ -91,7 +102,8 @@ void trainFold(const char* dataset, const char* trainCut, TTree* sig, TTree* bkg
 }
 
 void TrainBDT(const char* input = "BDTInput.root", double testFrac = 0.05, const char* prefix = "SigmaBDT",
-              int splitSeed = 100)   // 100 = TMVA default; other seeds measure the training noise
+              int splitSeed = 100,   // 100 = TMVA default; other seeds measure the training noise
+              double genieScale = -1) // TreeG weight factor: <0 equal summed weight, 0 none
 {
   TMVA::Tools::Instance();
   TFile* in = TFile::Open(input, "READ");
@@ -101,9 +113,17 @@ void TrainBDT(const char* input = "BDTInput.root", double testFrac = 0.05, const
   std::cout << "Signal=" << sig->GetEntries() << "  Background=" << bkg->GetEntries() << "\n";
 
   // Fold A: train on even events (IsOdd==0) -> applied to odd.
-  trainFold(Form("%s_A", prefix), "IsOdd<0.5", sig, bkg, testFrac, splitSeed);
+  TTree* gen = (TTree*)in->Get("TreeG");
+  double kg = 0;
+  if (gen && genieScale != 0) {
+    auto sumW = [](TTree* t) { t->Draw("Weight", "", "goff"); double s = 0;
+                               for (Long64_t i = 0; i < t->GetSelectedRows(); ++i) s += t->GetV1()[i]; return s; };
+    kg = genieScale > 0 ? genieScale : sumW(sig) / sumW(gen);
+    std::cout << "GENIE signal TreeG=" << gen->GetEntries() << " added, weight factor " << kg << "\n";
+  }
+  trainFold(Form("%s_A", prefix), "IsOdd<0.5", sig, bkg, testFrac, splitSeed, gen, kg);
   // Fold B: train on odd events (IsOdd==1) -> applied to even.
-  trainFold(Form("%s_B", prefix), "IsOdd>0.5", sig, bkg, testFrac, splitSeed);
+  trainFold(Form("%s_B", prefix), "IsOdd>0.5", sig, bkg, testFrac, splitSeed, gen, kg);
 
   std::cout << "Done. 2-fold weights: " << prefix << "_A/ (even), " << prefix << "_B/ (odd).\n";
 }

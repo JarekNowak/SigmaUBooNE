@@ -23,6 +23,7 @@
 #include "TTree.h"
 #include "TH1D.h"
 #include "TProfile.h"
+#include "BDTClamp.h"
 #include "TH2D.h"
 #include "TDirectory.h"
 #include "TVector3.h"
@@ -62,6 +63,12 @@ static const double MUON_MOM_MIN_TRUE = 0.15;   // GeV/c
 static const double TOPO_MIN       = 0.20;   // topological_score cosmic/ν veto
 // BDTG operating point: the out-of-sample FoM peak, located by ScanPeleeBDT.C on
 // BDTInput.root (scores are cross-validated, even->foldB / odd->foldA).
+// Retrained 2026-10-30 with clamped inputs (BDTClamp.h) and the GENIE Sigma0 QE signal
+// (TreeG, scaled to the NuWro sum) added to the training signal. Out of sample on NuWro:
+//   preselection      S= 6.370  B=26548.8  pur=0.024%  FoM=0.0391
+//   peak     +0.779   S= 2.122  B=  340.8  pur=0.619%  FoM=0.1146   <- this
+// AUC 0.9000 -> 0.9086 (clamp alone 0.9057), -12% background at 40-50% signal
+// efficiency. Previous weights: SigmaBDT_{A,B}.nuwroonly/ (2026-10-18 point below).
 // Retrained 2026-10-18 with the run3b EXT in the background tree (25% of its weight)
 // and on 95% of each fold instead of TMVA's default half (TrainBDT.C testFrac):
 //   preselection      S= 6.370  B=26548.8  pur=0.024%  FoM=0.0391   (B incl. EXT)
@@ -77,7 +84,7 @@ static const double TOPO_MIN       = 0.20;   // topological_score cosmic/ν veto
 // CAUTION: at the peak a 2% systematic on the background is +-7.6 events against
 // 2.1 signal, so the systematic budget -- not S/sqrt(S+B) -- should ultimately set
 // this. Rescan after any change to the training or the preselection.
-static const double BDT_MIN        = 0.759;
+static const double BDT_MIN        = 0.779;
 static const double M_PROTON       = 0.938272;  // Λ/Σ⁰ mass reconstruction
 static const double M_PION         = 0.139570;
 // Combined proton/pion discriminant D = LLR/σ_LLR + (χ²_p−χ²_π)/σ_Δχ² (high=pion);
@@ -435,6 +442,15 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   const char* wB = "SigmaBDT_B/weights/TMVASigma_BDTG.weights.xml";  // trained on odd
   const bool bdtReady = (gSystem->AccessPathName(wA) == kFALSE) &&
                         (gSystem->AccessPathName(wB) == kFALSE);
+  if (BDTClamp::N != NBV - 1) {
+    std::cout << "BDTClamp.h has " << BDTClamp::N << " variables, BDTV " << NBV - 1 << ": regenerate it\n";
+    return;
+  }
+  for (int k = 0; k < NBV - 1; k++)
+    if (std::string(BDTClamp::NAME[k]) != BDTV[k]) {
+      std::cout << "BDTClamp.h variable " << k << " is " << BDTClamp::NAME[k] << ", BDTV has " << BDTV[k] << "\n";
+      return;
+    }
   if (bdtReady) {
     reader = new TMVA::Reader("!Color:!Silent");
     for (int k = 0; k < NBV - 1; k++) reader->AddVariable(BDTV[k], &bdtv[k]);
@@ -1023,6 +1039,11 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
         bdtv[57] = W;
         bdtIsOdd = (float)(((evt % 2) + 2) % 2);   // event-number parity (CV fold tag)
         for (int k = 0; k < NBV - 1; k++) if (!std::isfinite(bdtv[k])) bdtv[k] = -1.0f;
+        //  Map every input into its bulk range (BDTClamp.h, 2026-10-30): sentinels such
+        //  as -FLT_MAX or 1e5 and garbage calorimetry otherwise leave TMVA's evenly
+        //  spaced cut grid with all real values in one bin. Same values for the
+        //  training trees and the reader.
+        BDTClamp::apply(bdtv);
         // Score with the fold that did NOT train on this event: even→B, odd→A.
         if (bdtReady) bdtg = reader->EvaluateMVA(bdtIsOdd > 0.5 ? "BDTG_A" : "BDTG_B");
         const bool genieSig = (s == 4 && IsSignal &&
