@@ -398,12 +398,15 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
                                   "cosmu","costh"};
   float pfpv[NSLOT][NPV];
   float nPFPtot = 0;
-  TFile* fbdt = nullptr; TTree* TreeS = nullptr; TTree* TreeB = nullptr;
+  TFile* fbdt = nullptr; TTree* TreeS = nullptr; TTree* TreeB = nullptr; TTree* TreeG = nullptr;
   if (writeBDT) {
     fbdt = new TFile(requirePion ? "BDTInput.root" : "BDTInput_nopion.root", "RECREATE");
     TreeS = new TTree("TreeS", "Sigma0 signal candidates");
     TreeB = new TTree("TreeB", "background candidates");
-    for (auto T : {TreeS, TreeB}) {
+    //  GENIE Sigma0 QE sample, true in-FV signal (fake-data slot): a second signal
+    //  model for training and for evaluating the BDT on another generator.
+    TreeG = new TTree("TreeG", "GENIE Sigma0 QE signal candidates");
+    for (auto T : {TreeS, TreeB, TreeG}) {
       for (int k = 0; k < NBV; k++) T->Branch(BDTV[k], &bdtv[k]);
       T->Branch("IsOdd", &bdtIsOdd);
       T->Branch("BdtScore", &tScore);   T->Branch("Sample", &tSample);
@@ -1022,7 +1025,9 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
         for (int k = 0; k < NBV - 1; k++) if (!std::isfinite(bdtv[k])) bdtv[k] = -1.0f;
         // Score with the fold that did NOT train on this event: even→B, odd→A.
         if (bdtReady) bdtg = reader->EvaluateMVA(bdtIsOdd > 0.5 ? "BDTG_A" : "BDTG_B");
-        if (writeBDT && s != 4 && !ovlSig) {
+        const bool genieSig = (s == 4 && IsSignal &&
+            SigmaFV::isFiducial(true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z));
+        if (writeBDT && (s != 4 || genieSig) && !ovlSig) {
           bool hasPi0 = false; if (mc_pdg) for (int p : *mc_pdg) if (p == 111) { hasPi0 = true; break; }
           tScore  = bdtg;            tSample = s;
           tNuPdg  = nu_pdg;          tCcnc   = ccnc;       tInter = interaction;
@@ -1080,7 +1085,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
               for (int j = 0; j < NPV; j++)
                 if (!std::isfinite(pfpv[k][j])) pfpv[k][j] = -1.0f;
           }
-          if (s == 0) TreeS->Fill(); else TreeB->Fill();
+          if (s == 0) TreeS->Fill(); else if (s == 4) TreeG->Fill(); else TreeB->Fill();
         }
       }
       bool sel_bdt = bdtReady ? (bdtg > BDT_MIN) : true;   // pass-through if no weights
@@ -1274,8 +1279,8 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   if (writeBDT) {
     fbdt->cd();
     std::cout << "BDT training trees: TreeS=" << TreeS->GetEntries()
-              << " signal, TreeB=" << TreeB->GetEntries() << " background\n";
-    TreeS->Write(); TreeB->Write();
+              << " signal, TreeB=" << TreeB->GetEntries() << " background, TreeG=" << TreeG->GetEntries() << " GENIE signal\n";
+    TreeS->Write(); TreeB->Write(); TreeG->Write();
     fbdt->Close();
     std::cout << "Wrote " << (requirePion ? "BDTInput.root" : "BDTInput_nopion.root") << "\n";
   }

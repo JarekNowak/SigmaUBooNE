@@ -166,6 +166,37 @@ scores).
 Previous weights: `SigmaBDT_{A,B}.preext/` (2026-10-15) and `SigmaBDT_{A,B}.exthalf/` (EXT, half
 fold), both untracked; the 2026-10-15 weights are also in git history.
 
+**Not adopted yet: BDT training with GENIE signal (measured 2026-10-30).** `SigmaSelection.C`
+writes the GENIE Σ⁰ QE sample's true in-FV signal as `TreeG` in `BDTInput.root` (43,183 events
+against 10,931 NuWro in `TreeS`, same stage, same branches, with the production BDT's
+cross-validated score). `MakeTrainGenie.C` builds the training input: B = NuWro + GENIE at their
+own weights (GENIE is then ~86% of the signal weight), C = each generator scaled to equal total
+weight. Trained with `TrainBDT.C`, scored out of sample on each generator, means of two seeds:
+
+| training signal | evaluated on | AUC | B/B₀ at 50% | at 40% | at 20% | FoM peak |
+|---|---|---|---|---|---|---|
+| NuWro only (production, 3 seeds) | NuWro | 0.9006 | 0.0355 | 0.0212 | 0.0060 | 0.1084 |
+| B: NuWro + GENIE | NuWro | 0.9046 | 0.0336 | 0.0201 | 0.0054 | 0.1116 |
+| C: equal sums | NuWro | 0.9048 | 0.0340 | 0.0201 | 0.0054 | 0.1121 |
+| NuWro only (production) | GENIE | 0.9107 | 0.0312 | 0.0189 | 0.0050 | 0.672 |
+| B | GENIE | 0.9173 | 0.0278 | 0.0168 | 0.0043 | 0.720 |
+| C | GENIE | 0.9163 | 0.0284 | 0.0170 | 0.0044 | 0.709 |
+
+More distinct signal helps even when judged only on NuWro, most at tight cuts. The expected NuWro
+limit with the cut re-chosen for each f (Asimov, `Sensitivity.C` on the rescored file):
+
+| f | production | B (seeds 100 / 1) | C (seed 100) |
+|---|---|---|---|
+| 0% | 18.2 | 17.8 / 17.6 | 17.6 |
+| 5% | 22.6 | 21.1 / 20.9 | 20.7 |
+| 10% | 26.8 | 24.5 / 24.8 | 24.1 |
+| 15% | 31.1 | 27.7 / 27.5 | 27.4 |
+| 30% | 39.9 | 32.9 / 33.0 | 31.8 |
+
+That is 9–11% at f = 10–15%. The 30% row rests on few raw background events (MC stat 12–15%).
+Adopting it changes the production weights and every PeLEE number downstream, so it should go in
+together with the input clamp below, in one retraining.
+
 **Not adopted: input ranges (measured 2026-10-19).** Several BDT inputs carry values far outside
 their physical range:
 - the −FLT_MAX "missing" sentinel, in `Shower1VtxDist` (24% of background, 17% of signal) and
