@@ -62,9 +62,13 @@ const double CL = 0.90;
 //  interactions, each ~20 times, and 1.32x the overlay's rate per POT.
 //  x 0.934, the PPFX CV weight on the signal (PpfxMap.C), as the PeLEE chain applies
 //  it; the hypana background carries no PPFX weight (~6% conservative).
-const double LS_SG     = 0.896 * 0.934, LS_SG_ERR = 0.029 * 0.934;  // 956 raw
+//  Since 2026-10-30 with the hyperon weights of SigmaSelection.C, applied to the same
+//  956 / 245 events matched on (run, subrun, event): GENIE 0.896 -> 0.613 by the
+//  cross-section weight (HypXsecWeight.h) and 0.604 with the polarisation weight
+//  (pol_genie_qe.tsv); NuWro 0.1420 -> 0.1414 (pol_nuwro.tsv).
+const double LS_SG     = 0.6043 * 0.934, LS_SG_ERR = 0.0198 * 0.934;  // 956 raw
 const double LS_SG_OLD = 1.33 / (110.1 / 83.3);     // previous sample, overlay-normalised
-const double LS_SN     = 0.142, LS_SN_ERR = 0.009;  // 245 raw, flux-weighted
+const double LS_SN     = 0.1414, LS_SN_ERR = 0.009;  // 245 raw, flux-weighted
 const double LS_BMC    = 3.76,  LS_BMC_ERR = 0.78;  // 23 raw
 const double LS_EXT    = 0.62,  LS_EXT_ERR = 0.27;  // factorised
 //  NuWro Sigma0 lost to FSI (mostly to Lambda): IslandProcess.C on sig_nuwro.list

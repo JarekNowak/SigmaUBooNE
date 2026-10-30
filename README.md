@@ -1163,6 +1163,28 @@ expected), nucleon in the Λ frame 108 ± 26 (100.6); ⟨w⟩ = 0.997, rms 0.15.
 
 NuWro's cascade keeps 64% of primary Λ as Λ (32% jailed, 4% to Σ), against 24% for Σ⁰.
 
+Σ⁻ is wrong the same way: GENIE 194.9 → 129.3 per data POT with the weight (×0.66, as Σ⁰),
+NuWro 115.0, so NuWro/GENIE-weighted is 0.85 (Λ), 0.88 (Σ⁰), 0.89 (Σ⁻), and Σ⁻/Σ⁰ is 2.38
+(GENIE weighted) against 2.40 (NuWro).
+
+**Effect on the analysis** (`SigmaSelection.C` with `hyperonRW`, `Sensitivity.C`):
+
+| | before | after |
+|---|---|---|
+| PeLEE S NuWro / GENIE at 0.779 | 2.122 / 13.47 | 2.117 / 8.86 |
+| GENIE/NuWro (PeLEE) | 6.34 | 4.19 |
+| PeLEE B | 342.0 | 344.9 (overlay Λ up, Σ down) |
+| Λ-style S NuWro / GENIE (before PPFX) | 0.1420 / 0.896 | 0.1414 / 0.604 |
+| μ_UL f=0, PeLEE NuWro / GENIE | 17.2 / 2.71 | 17.3 / 4.13 |
+| μ_UL f=15%, re-optimised, NuWro / GENIE | 28.3 / 4.47 | 29.5 / 7.04 (cut 0.910) |
+| μ_UL f=15%, Λ-style, NuWro / GENIE | 37.6 / 6.34 | 37.8 / 9.40 |
+
+The polarisation weight moves the selected yields by −0.2% (NuWro, PeLEE) to −1.4% (GENIE,
+Λ-style). The PeLEE chain stays ahead of the Λ-style chain under both generators to f=30%.
+The Λ-style background (23 raw) is not reweighted yet. Backups of the unweighted outputs:
+`SigmaHists.root.noHypRW`, `BDTInput.root.noHypRW`. ACLiC + TMVA needs
+`LD_LIBRARY_PATH=$HOME/lib/flexiblas-shim:$LD_LIBRARY_PATH`.
+
 ### Sample bookkeeping notes
 
 - The **NuWro sample is Σ⁰-filtered** (Σ⁰ 24.9%, Λ 27.9% at the hyperon level, and 37.3%
