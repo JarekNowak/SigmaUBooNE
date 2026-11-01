@@ -63,18 +63,28 @@ const double CL = 0.90;
 //  x 0.934, the PPFX CV weight on the signal (PpfxMap.C), as the PeLEE chain applies
 //  it; the hypana background carries no PPFX weight (~6% conservative).
 //  Since 2026-10-30 with the hyperon weights of SigmaSelection.C, applied to the same
-//  956 / 245 events matched on (run, subrun, event): GENIE 0.896 -> 0.613 by the
-//  cross-section weight (HypXsecWeight.h) and 0.604 with the polarisation weight
-//  (pol_genie_qe.tsv); NuWro 0.1420 -> 0.1414 (pol_nuwro.tsv).
-const double LS_SG     = 0.6043 * 0.934, LS_SG_ERR = 0.0198 * 0.934;  // 956 raw
+//  events matched on (run, subrun, event) (xsec weight HypXsecWeight.h, polarisation
+//  pol_genie_qe.tsv / pol_nuwro.tsv).
+//  Since 2026-11-01 the operating point also requires the proton candidate to be proton-like,
+//  llrP < 0 (IslandOptimise.py): 91.5% of signal for both generators, about half the background
+//  (all swapped p/pi pairs, all two-shower fakes, most pi-pi pairs); the expected limit improves
+//  by 12-13% on both the median and the mean over outcomes, and on both parity halves.
+//  Before it: GENIE 0.6043 (956 raw), NuWro 0.1414 (245), B_MC 3.92 +- 0.82 (23), EXT 0.62.
+const double LS_SG     = 0.5525 * 0.934, LS_SG_ERR = 0.0190 * 0.934;  // 875 raw
 const double LS_SG_OLD = 1.33 / (110.1 / 83.3);     // previous sample, overlay-normalised
-const double LS_SN     = 0.1414, LS_SN_ERR = 0.009;  // 245 raw, flux-weighted
-const double LS_BMC    = 3.76,  LS_BMC_ERR = 0.78;  // 23 raw
-const double LS_EXT    = 0.62,  LS_EXT_ERR = 0.27;  // factorised
+const double LS_SN     = 0.1261, LS_SN_ERR = 0.0088; // 219 raw, flux-weighted
+//  12 background events remain, 4 of them GENIE numubar CC QE Lambda (mc_hyperon_pdg 3122) with
+//  the hyperon cross-section weight (1.22-1.29); error sqrt(sum w^2).
+const double LS_BMC    = 2.12,  LS_BMC_ERR = 0.62;  // 12 raw
+//  EXT is factorised (ExtFactor.C, 0.62 +- 0.27 before the PID cut) with no EXT event left at
+//  these stages; scaled by the MC background's PID pass fraction (2.12 / 3.92 = 0.541). That
+//  assumes cosmic-induced candidates pass the PID cut like neutrino background.
+const double LS_EXT    = 0.62 * 0.541,  LS_EXT_ERR = 0.27 * 0.541;
 //  NuWro Sigma0 lost to FSI (mostly to Lambda): IslandProcess.C on sig_nuwro.list
-//  with signalOnly=false, flux-weighted, 37 raw. The PeLEE B carries the same
+//  with signalOnly=false, flux-weighted, 37 raw before the PID cut (0.0207), 35 after
+//  (pass fraction 0.0301 / 0.0318 from the cache weights). The PeLEE B carries the same
 //  component as "hyperons".
-const double LS_HYP    = 0.0207, LS_HYP_ERR = 0.0034;
+const double LS_HYP    = 0.0207 * 0.947, LS_HYP_ERR = 0.0034;
 //  Dirt is not in hypana format. PeLEE dirt/overlay is 8.7% at MuonCandidate
 //  and 0.6% after the BDT; the upper end bounds the Lambda-style dirt.
 const double LS_DIRT_MAX = 0.087 * LS_BMC;
@@ -294,7 +304,7 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
   };
   lsVar("nominal", bLs, rLs, g, sGls);
   lsVar("without the EXT estimate", LS_BMC + LS_HYP, std::hypot(LS_BMC_ERR, LS_HYP_ERR) / (LS_BMC + LS_HYP), g, sGls);
-  lsVar("with dirt at its bound (+0.33 +- 0.33)", bLs + LS_DIRT_MAX,
+  lsVar("with dirt at its bound (8.7% of B_MC)", bLs + LS_DIRT_MAX,
         std::hypot(rLs * bLs, LS_DIRT_MAX) / (bLs + LS_DIRT_MAX), g, sGls);
   lsVar("no signal normalisation systematic (g = 0)", bLs, rLs, 0.0, sGls);
   lsVar("GENIE from the previous hyperon sample", bLs, rLs, g, LS_SG_OLD);

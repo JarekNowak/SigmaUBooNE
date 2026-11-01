@@ -1181,7 +1181,29 @@ NuWro 115.0, so NuWro/GENIE-weighted is 0.85 (Λ), 0.88 (Σ⁰), 0.89 (Σ⁻), a
 
 The polarisation weight moves the selected yields by −0.2% (NuWro, PeLEE) to −1.4% (GENIE,
 Λ-style). The PeLEE chain stays ahead of the Λ-style chain under both generators to f=30%.
-The Λ-style background (23 raw) is not reweighted yet. Backups of the unweighted outputs:
+
+**Second pass (2026-10-31):**
+- **Λ-style background:** 4 of its 23 raw events are GENIE ν̄μ CC QE Λ (checked in the hypana truth). Their weights are 1.262, 1.285, 1.218, 1.216, so B_MC goes 3.76 → 3.92 ± 0.82 and B goes 4.40 → 4.56.
+  - Limits, f=15%: 37.3 (NuWro) and 9.29 (GENIE), against 37.8 / 9.40 before. The median n stays at 4, so a larger B gives a slightly tighter limit.
+- **Λ-style signal cut flow** (GENIE QE, xsec + pol + PPFX): MuonCandidate 27.41 → pair 7.75 → mass 4.39 → pointing 1.21 → gap 1.16 → island 0.564.
+- **Detector variations,** rerun with the weights: no ratio moves by more than 0.005. Quadrature at BDTG: S 19.9% (noise 21.3%), B 9.6% (7.0%). The old outputs are in `pelee/dv_noHypRW/`.
+- **Hypana BDT** (`PeakBDT.C`, new optional weight arguments): BDTHyp.root carries no event IDs, but TreeS / TreeB are filled in the island caches' order (identical (nTracks, nShowers) at all 47,033 / 123,000 indices), which supply them.
+  - `HypSignalWeights.C` writes the per-event signal weight table `hypw_genie_qe.tsv`.
+  - Signal at 0.554: 17.13 → 11.32 (×0.661).
+  - Background hyperon-QE table `bkg_hypqe.tsv` (all 14,164 hypana background files, 7,923 events): B 733.2 → 737.4.
+
+**Λ-style optimisation (2026-10-31 / 11-01):**
+- **Adopted: proton-candidate PID, `llrP < 0`.** Keeps 91.5% of signal for both generators and halves the background (removes all swapped p/π pairs, all two-shower fakes, most ππ).
+  - GENIE S 0.516 (875 raw), NuWro 0.126 (219), B_MC 2.12 ± 0.62 (12 raw).
+  - EXT 0.62 × 0.541 = 0.34 (scaled by the MC PID pass fraction, an assumption); B = 2.48.
+  - Limit at f=15%: 33.4 (NuWro) / 8.10 (GENIE), was 37.3 / 9.29. It is now nearly flat in f, so the **PeLEE/Λ-style crossover is at f ≈ 21%**; at f=30% the Λ-style chain leads (34.1 vs 36.0 NuWro).
+- **Remaining 12 background events:** 4 real Λ (GENIE ν̄μ CC QE, 38% of B_MC), 4 resonant/DIS pπ⁻, 3 pp/pπ⁺, 1 π⁺π⁻.
+  - The real-Λ "photons" are a Michel e⁺ (0.6 cm from the μ⁺ end), two δ-ray electrons on the muon track, and a cosmic.
+- **Measured and not used:**
+  - **Σ⁰ mass window, maximum photon distance, photon pointing (`PhotonPoint.C`), shower shape** (hits/plane, length, opening angle, Molière angle, dE/dx): no limit gain.
+  - **Muon-track photon veto** (photon start < 5 cm from the muon axis, 20 cm to L+10 along it): removes 2 of 4 real Λ for 6% signal, mean expected limit 9.32 vs 9.38. Starting the zone at the vertex flags 23% of true Σ⁰ photons.
+- **Full cut scan (`IslandOptimise.py`):** 20% on the full sample, ~6% out of sample. The background statistics (8–23 raw) don't support a finer optimisation.
+- **Metric:** at B ≈ 2–4 the median expected limit moves in integer steps; the mean over n ~ Pois(B) is the steadier guide. Backups of the unweighted outputs:
 `SigmaHists.root.noHypRW`, `BDTInput.root.noHypRW`. ACLiC + TMVA needs
 `LD_LIBRARY_PATH=$HOME/lib/flexiblas-shim:$LD_LIBRARY_PATH`.
 

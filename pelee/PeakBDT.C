@@ -2,10 +2,19 @@
 // peak, out-of-sample (each event scored by the fold it was not trained on).
 // Prints the peak and a neighbourhood so the plateau width is visible: a peak
 // sitting on a knife edge is not a working point you want to adopt.
+//
+// Optional per-event weights (2026-10-31): BDTHyp.root carries no event identifiers, but its
+// TreeS / TreeB are filled in the same order as the island caches isl_sig_genie_qe.root /
+// isl_bkg.root (checked: identical (nTracks, nShowers) at all 47,033 / 123,000 indices), which
+// do. sigW / bkgW are "run sub evt w" tables (HypSignalWeights.C: GENIE hyperon cross section x
+// Sigma0 polarisation; for the background, the GENIE hyperon-QE events with their cross-section
+// weight); events not listed keep w = 1.
+//   root -l -b -q 'PeakBDT.C("hypw_genie_qe.tsv","bkg_hypqe.tsv")'
 R__LOAD_LIBRARY(libTMVA)
 #include "TMVA/Reader.h"
 #include "TMVA/Tools.h"
 #include "HypConfig.h"
+#include "FluxWeights.h"
 static const char* ALL[] = {
  "MuonPID","MuonTrkLength","MuonTrkDistVtx","MuonTrkScore","MuonNHitsY",
  "PionPID","PionTrkLength","PionTrkDistVtx","PionTrkScore","PionNHitsY",
@@ -21,10 +30,26 @@ static const char* ALL[] = {
  "ct_nisl_U","ct_nisl_V","ct_nisl_Y","HasPair",
  "IslNPlanes","IslAny","IslSeeded"};
 static const int NV=sizeof(ALL)/sizeof(ALL[0]);
-void PeakBDT(){
+// per-index extra weight from the island cache's (run, sub, evt) and a "run sub evt w" table
+static std::vector<double> indexWeights(const char* cache, const char* table, Long64_t n){
+  std::vector<double> w(n, 1.0);
+  if(!table||!*table) return w;
+  const auto m = loadFluxWeights(table);
+  TFile* c=TFile::Open(cache); TTree* t=c?(TTree*)c->Get("isl"):nullptr;
+  if(!t||t->GetEntries()!=n){ printf("  %s does not match the BDT tree (%lld entries): weights ignored\n",cache,n); return w; }
+  t->SetEstimate(n+1); t->Draw("run:sub:evt","","goff para");
+  long hit=0; double sum=0;
+  for(Long64_t i=0;i<n;++i){ auto it=m.find(rseKey((unsigned)t->GetVal(0)[i],(unsigned)t->GetVal(1)[i],(unsigned)t->GetVal(2)[i]));
+    if(it!=m.end()){ w[i]=it->second; hit++; sum+=it->second; } }
+  printf("  %s: %ld of %lld events weighted (<w> %.3f)\n",table,hit,n,hit?sum/hit:0.);
+  delete c; return w;
+}
+void PeakBDT(const char* sigW="", const char* bkgW=""){
   TMVA::Tools::Instance();
   TFile* f=TFile::Open("BDTHyp.root");
   TTree* sig=(TTree*)f->Get("TreeS"); TTree* bkg=(TTree*)f->Get("TreeB");
+  const auto xS = indexWeights("isl_sig_genie_qe.root", sigW, sig->GetEntries());
+  const auto xB = indexWeights("isl_bkg.root",          bkgW, bkg->GetEntries());
   std::vector<double> sS,bS,sW,bW;
   for(int fold=0;fold<2;++fold){
     TMVA::Reader rd("!Color:Silent");
@@ -40,7 +65,7 @@ void PeakBDT(){
         bool inTest = fold==0 ? (od>0.5):(od<0.5); if(!inTest) continue;
         for(int i=0;i<NV;++i) buf[i]=val[i];
         double r=rd.EvaluateMVA("BDTG");
-        if(isSig){sS.push_back(r);sW.push_back(w);} else {bS.push_back(r);bW.push_back(w);} }
+        if(isSig){sS.push_back(r);sW.push_back(w*xS[e]);} else {bS.push_back(r);bW.push_back(w*xB[e]);} }
       t->ResetBranchAddresses(); }
   }
   double S0=0,B0=0; for(double w:sW)S0+=w; for(double w:bW)B0+=w;
