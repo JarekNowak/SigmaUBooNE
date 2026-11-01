@@ -70,9 +70,21 @@ const double CL = 0.90;
 //  (all swapped p/pi pairs, all two-shower fakes, most pi-pi pairs); the expected limit improves
 //  by 12-13% on both the median and the mean over outcomes, and on both parity halves.
 //  Before it: GENIE 0.6043 (956 raw), NuWro 0.1414 (245), B_MC 3.92 +- 0.82 (23), EXT 0.62.
-const double LS_SG     = 0.5525 * 0.934, LS_SG_ERR = 0.0190 * 0.934;  // 875 raw
+//  Since 2026-11-01 the signal definition is the PeLEE chain's for both chains: numubar CC, Sigma0 in
+//  the final state, TRUE vertex in the FV, true muon momentum > 0.15 GeV/c, no pi0/eta/eta'/K at the
+//  vertex (flags from the hypana truth, PreselFlow.C). Signal-sample events failing it are
+//  background, taken from the GENIE QE sample for both models (+0.003, 5 raw), as the PeLEE chain
+//  takes them from the overlay. Before: GENIE 0.5525 x 0.934, NuWro 0.1261.
+//  Since 2026-11-01 (later) the full definition adds Lambda -> p pi-, KE_p > 60 MeV, KE_pi > 30 MeV,
+//  E_gamma > 30 MeV and no other meson or strange particle (sigdef_*.tsv from ThreshStudy.C). Signal-
+//  sample events outside it are background, for each model from its own sample (LS_OUT_G / LS_OUT_N).
+//  Before: GENIE 0.5493 x 0.934 (870 raw), NuWro 0.1257 (218 raw).
+const double LS_SG     = 0.5090 * 0.934, LS_SG_ERR = 0.0181 * 0.934;  // 810 raw
 const double LS_SG_OLD = 1.33 / (110.1 / 83.3);     // previous sample, overlay-normalised
-const double LS_SN     = 0.1261, LS_SN_ERR = 0.0088; // 219 raw, flux-weighted
+const double LS_SN     = 0.1183, LS_SN_ERR = 0.0085; // 207 raw, flux-weighted
+//  Sigma0 outside the definition, at the operating point: GENIE 0.0379 (60 raw, incl. PPFX) + 0.003
+//  (true vertex / muon / vetoes, 5 raw); NuWro 0.0073 (11 raw) + 0.0004.
+const double LS_OUT_G  = 0.0409, LS_OUT_N = 0.0077;
 //  12 background events remain, 4 of them GENIE numubar CC QE Lambda (mc_hyperon_pdg 3122) with
 //  the hyperon cross-section weight (1.22-1.29); error sqrt(sum w^2).
 const double LS_BMC    = 2.12,  LS_BMC_ERR = 0.62;  // 12 raw
@@ -176,14 +188,17 @@ Exp expected(double B, double rB, double rS){
 }
 
 struct Ev { float s, w; int smp; };
-struct Yield { double S = 0, S2 = 0, B = 0, B2 = 0, C[6] = {0}; long rawS = 0, raw[6] = {0}; };
+//  Sample codes in TreeB: 1 NuWro non-signal hyperons, 2 overlay, 3 dirt, 5 EXT, 6 GENIE QE Sigma0 outside
+//  the signal definition, 7 NuWro Sigma0 outside it. Each model's background skips the other model's code.
+struct Yield { double S = 0, S2 = 0, B = 0, B2 = 0, C[8] = {0}; long rawS = 0, raw[8] = {0}; };
 //  Dirt and EXT carry 0.66 and 0.75 events per raw event, so at tight cuts a
 //  component can run out of raw events while its true yield is not small: a
 //  component with none left gets the error of one event of its own weight.
-Yield yieldAt(const std::vector<Ev>& sig, const std::vector<Ev>& bkg, double cut){
-  Yield y; double wMax[6] = {0};
+Yield yieldAt(const std::vector<Ev>& sig, const std::vector<Ev>& bkg, double cut, int skip = 6){
+  Yield y; double wMax[8] = {0};
   for (auto& e : sig) if (e.s > cut) { y.S += e.w; y.S2 += e.w * e.w; y.rawS++; }
   for (auto& e : bkg) {
+    if (e.smp == skip) continue;
     wMax[e.smp] = std::max(wMax[e.smp], (double)e.w);
     if (e.s > cut) { y.B += e.w; y.B2 += e.w * e.w; y.C[e.smp] += e.w; y.raw[e.smp]++; }
   }
@@ -191,24 +206,24 @@ Yield yieldAt(const std::vector<Ev>& sig, const std::vector<Ev>& bkg, double cut
   return y;
 }
 
-struct Row { const char* name; double sN, rSN, sG, rSG, B, rB; };
+struct Row { const char* name; double sN, rSN, sG, rSG, B, rB, BG, rBG; };   // B: NuWro model, BG: GENIE model
 
 // nPredN/nPredG > 0: also print mu_UL x the model's in-FV signal count, the
 // limit on the number of signal events, which is model-independent as far as
 // the efficiency is
 void printChain(const Row& r, double g, const double* fs, int nf, double nPredN = 0, double nPredG = 0){
-  printf("\n  %s   S(NuWro) %.3f  S(GENIE) %.3f  B %.2f (MC stat %.1f%%)  g %.0f%%\n",
-         r.name, r.sN, r.sG, r.B, 100 * r.rB, 100 * g);
+  printf("\n  %s   S(NuWro) %.3f  S(GENIE) %.3f  B NuWro / GENIE model %.2f / %.2f (MC stat %.1f%%)  g %.0f%%\n",
+         r.name, r.sN, r.sG, r.B, r.BG, 100 * r.rB, 100 * g);
   printf("    %4s  %-26s %9s %8s   %7s %7s", "f", "mu_UL NuWro: median [16,84]", "GENIE", "CLs/Bay", "Z NuWro", "Z GENIE");
   if (nPredN > 0) printf("   N_UL NuWro / GENIE");
   printf("\n");
   for (int k = 0; k < nf; ++k) {
-    const double rB = std::sqrt(r.rB * r.rB + fs[k] * fs[k]);
+    const double rB = std::sqrt(r.rB * r.rB + fs[k] * fs[k]), rBG = std::sqrt(r.rBG * r.rBG + fs[k] * fs[k]);
     const Exp eN = expected(r.B, rB, std::sqrt(g * g + r.rSN * r.rSN));
-    const Exp eG = expected(r.B, rB, std::sqrt(g * g + r.rSG * r.rSG));
+    const Exp eG = expected(r.BG, rBG, std::sqrt(g * g + r.rSG * r.rSG));
     printf("    %3.0f%%  %7.1f  [%6.1f, %6.1f]     %9.2f %8.3f   %7.3f %7.3f", 100 * fs[k],
            eN.med / r.sN, eN.lo / r.sN, eN.hi / r.sN, eG.med / r.sG, eN.cls / eN.med,
-           zA(r.sN, r.B, rB * r.B), zA(r.sG, r.B, rB * r.B));
+           zA(r.sN, r.B, rB * r.B), zA(r.sG, r.BG, rBG * r.BG));
     if (nPredN > 0) printf("   %6.0f / %6.0f", eN.med / r.sN * nPredN, eG.med / r.sG * nPredG);
     printf("\n");
   }
@@ -216,7 +231,7 @@ void printChain(const Row& r, double g, const double* fs, int nf, double nPredN 
 }
 
 void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "SigmaHists.root",
-                 double bdtCut = 0.759, double g = 0.20, const char* plotFile = "")
+                 double bdtCut = 0.830, double g = 0.20, const char* plotFile = "")
 {
   // ── 1. self-test against the PDG table (90% CL, b = 0: 2.30 3.89 5.32 6.68 7.99)
   printf("\n== self-test, b = 0 (PDG: 2.30 3.89 5.32 6.68 7.99) and b = 3, n = 3 ==\n  Bayes:");
@@ -230,9 +245,13 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
   printf("  b=3 +-30%%, e +-20%%, n=3: Bayes %.3f  CLs %.3f\n", ulBayes(3, m3s), ulCLs(3, m3s));
 
   // ── 2. PeLEE chain: events from BDTInput.root, GENIE signal from SigmaHists.root
-  std::vector<Ev> sig, bkg;
+  std::vector<Ev> sig, bkg, sigG;
   {
     TFile f(bdtInput);
+    if (TTree* tg = (TTree*)f.Get("TreeG")) {      // GENIE QE signal (full definition), per event
+      float w, sc, smp; tg->SetBranchAddress("Weight", &w); tg->SetBranchAddress("BdtScore", &sc); tg->SetBranchAddress("Sample", &smp);
+      for (Long64_t i = 0; i < tg->GetEntries(); ++i) { tg->GetEntry(i); sigG.push_back({sc, w, (int)smp}); }
+    }
     for (int isS = 0; isS < 2; ++isS) {
       TTree* t = (TTree*)f.Get(isS ? "TreeS" : "TreeB");
       if (!t) { printf("no %s in %s\n", isS ? "TreeS" : "TreeB", bdtInput); return; }
@@ -263,7 +282,8 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
     if (hn) nPredN = hn->Integral(0, hn->GetNbinsX() + 1);
   }
   if (genie <= 0) { printf("no GenieSignal in %s: rerun SigmaSelection.C\n", hists); return; }
-  const Yield y = yieldAt(sig, bkg, bdtCut);
+  const Yield y = yieldAt(sig, bkg, bdtCut, 6);      // NuWro model
+  const Yield yG = yieldAt(sigG, bkg, bdtCut, 7);    // GENIE model (S from TreeG)
   const double ratioGN = genie / y.S;   // valid at the cut SigmaSelection.C was run with
   printf("\n== PeLEE BDT chain, BDTG > %.3f ==\n", bdtCut);
   printf("  S NuWro %.3f (%ld raw)  S GENIE (%s) %.3f +- %.3f  ->  GENIE/NuWro %.2f   [overlay alone %.3f +- %.3f]\n",
@@ -271,9 +291,12 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
   printf("  in-FV signal at AllEvents: NuWro %.2f  GENIE %.2f\n", nPredN, nPredG);
   printf("  B %.2f: hyperons %.2f (%ld)  overlay %.2f (%ld)  dirt %.2f (%ld)  EXT %.2f (%ld) raw; MC stat %.2f%%\n",
          y.B, y.C[1], y.raw[1], y.C[2], y.raw[2], y.C[3], y.raw[3], y.C[5], y.raw[5], 100 * std::sqrt(y.B2) / y.B);
+  printf("  Sigma0 outside the signal definition: NuWro %.3f (%ld raw, NuWro model), GENIE %.3f (%ld raw, GENIE model)"
+         " -> B NuWro model %.2f, GENIE model %.2f;  TreeG S_GENIE %.3f\n",
+         y.C[7], y.raw[7], yG.C[6], yG.raw[6], y.B, yG.B, yG.S);
 
   const double sGls = LS_SG;
-  const double bLs = LS_BMC + LS_EXT + LS_HYP;
+  const double bLs = LS_BMC + LS_EXT + LS_HYP + LS_OUT_N, bLsG = LS_BMC + LS_EXT + LS_HYP + LS_OUT_G;
   const double rLs = std::sqrt(LS_BMC_ERR * LS_BMC_ERR + LS_EXT_ERR * LS_EXT_ERR + LS_HYP_ERR * LS_HYP_ERR) / bLs;
   printf("\n== Lambda-style chain (two planes, gap) ==\n");
   printf("  S NuWro %.3f  S GENIE %.3f (QE sample; previous hyperon sample %.3f)  B %.2f (%.2f MC + %.2f EXT + %.3f hyperons), MC stat %.1f%%\n",
@@ -282,8 +305,9 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
   // ── 3. expected limits per chain and background systematic
   const double fs[4] = {0.0, 0.07, 0.15, 0.30};
   printf("\n== Expected 90%% CL limits on mu (rate / model), background-only median ==\n");
-  const Row pe = { "PeLEE BDT", y.S, std::sqrt(y.S2) / y.S, genie, genieErr / genie, y.B, std::sqrt(y.B2) / y.B };
-  const Row ls = { "Lambda-style", LS_SN, LS_SN_ERR / LS_SN, sGls, LS_SG_ERR / LS_SG, bLs, rLs };
+  const Row pe = { "PeLEE BDT", y.S, std::sqrt(y.S2) / y.S, genie, genieErr / genie, y.B, std::sqrt(y.B2) / y.B,
+                   yG.B, std::sqrt(yG.B2) / yG.B };
+  const Row ls = { "Lambda-style", LS_SN, LS_SN_ERR / LS_SN, sGls, LS_SG_ERR / LS_SG, bLs, rLs, bLsG, rLs * bLs / bLsG };
   printChain(pe, g, fs, 4, nPredN, nPredG);
   printChain(ls, g, fs, 4);
 
@@ -296,9 +320,10 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
   auto lsVar = [&](const char* tag, double B, double rB, double gg, double sG){
     const double rBt = std::sqrt(rB * rB + 0.15 * 0.15);
     const Exp eN = expected(B, rBt, std::hypot(gg, LS_SN_ERR / LS_SN));
-    const Exp eG = expected(B, rBt, std::hypot(gg, LS_SG_ERR / LS_SG));
+    const double BG = B + LS_OUT_G - LS_OUT_N;       // GENIE model: its own out-of-definition Sigma0
+    const Exp eG = expected(BG, rBt, std::hypot(gg, LS_SG_ERR / LS_SG));
     const double aN = ulBayes(B, model(B, rBt, std::hypot(gg, LS_SN_ERR / LS_SN)));
-    const double aG = ulBayes(B, model(B, rBt, std::hypot(gg, LS_SG_ERR / LS_SG)));
+    const double aG = ulBayes(BG, model(BG, rBt, std::hypot(gg, LS_SG_ERR / LS_SG)));
     printf("  %-44s %8.2f %4d   %6.1f / %5.2f   %6.1f / %5.2f\n", tag, B, quantile(B, 0.5),
            eN.med / LS_SN, eG.med / sG, aN / LS_SN, aG / sG);
   };
@@ -311,12 +336,13 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
   lsVar("background known exactly (rMC = 0)", bLs, 0.0, g, sGls);
 
   // ── 5. PeLEE BDT cut chosen by the limit, against the counting FoM
-  printf("\n== PeLEE BDT cut that minimises the Asimov limit (NuWro mu; GENIE = NuWro / %.2f) ==\n", ratioGN);
+  printf("\n== PeLEE BDT cut that minimises the Asimov limit (NuWro model; the GENIE model is re-optimised separately in the plot rows) ==\n");
   printf("  %4s   %-44s   %-30s   %-20s\n", "f", "limit-optimal: cut S B (MC stat, EXT raw) mu", "FoM-optimal: cut S B mu", "at the op point: mu");
   const double fsc[5] = {0.0, 0.05, 0.10, 0.15, 0.30};
   std::vector<double> cuts;
   for (double c = 0.50; c < 0.951; c += 0.005) cuts.push_back(c);
-  std::vector<Yield> ys; for (double c : cuts) ys.push_back(yieldAt(sig, bkg, c));
+  std::vector<Yield> ys, ysG;
+  for (double c : cuts) { ys.push_back(yieldAt(sig, bkg, c, 6)); ysG.push_back(yieldAt(sigG, bkg, c, 7)); }
   auto muAt = [&](const Yield& q, double f){
     const Model m = model(q.B, std::sqrt(q.B2 / (q.B * q.B) + f * f), std::sqrt(g * g + q.S2 / (q.S * q.S)));
     return ulBayes(q.B, m) / q.S; };
@@ -346,8 +372,9 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
   for (int k = 0; k < NF; ++k) {
     const double f = 0.025 * k;
     const double rPe = std::sqrt(pe.rB * pe.rB + f * f), rL = std::sqrt(ls.rB * ls.rB + f * f);
-    const Exp pN = expected(pe.B, rPe, std::hypot(g, pe.rSN)), pG = expected(pe.B, rPe, std::hypot(g, pe.rSG));
-    const Exp lN = expected(ls.B, rL, std::hypot(g, ls.rSN)), lG = expected(ls.B, rL, std::hypot(g, ls.rSG));
+    const double rPeG = std::sqrt(pe.rBG * pe.rBG + f * f), rLG = std::sqrt(ls.rBG * ls.rBG + f * f);
+    const Exp pN = expected(pe.B, rPe, std::hypot(g, pe.rSN)), pG = expected(pe.BG, rPeG, std::hypot(g, pe.rSG));
+    const Exp lN = expected(ls.B, rL, std::hypot(g, ls.rSN)), lG = expected(ls.BG, rLG, std::hypot(g, ls.rSG));
     auto setP = [&](TGraphAsymmErrors& gr, const Exp& e, double S){
       gr.SetPoint(k, 100 * f, e.med / S); gr.SetPointError(k, 0, 0, (e.med - e.lo) / S, (e.hi - e.med) / S); };
     setP(gPeN, pN, pe.sN); setP(gPeG, pG, pe.sG); setP(gLsN, lN, ls.sN); setP(gLsG, lG, ls.sG);
@@ -360,9 +387,18 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
     }
     const Yield& q = ys[iBest];
     const double muRe = expected(q.B, std::sqrt(q.B2 / (q.B * q.B) + f * f), std::sqrt(g * g + q.S2 / (q.S * q.S))).med / q.S;
-    gReN.SetPoint(k, 100 * f, muRe); gReG.SetPoint(k, 100 * f, muRe / ratioGN);
-    printf("  plot f %4.1f%%: PeLEE %.1f / %.2f  re-chosen (%.3f) %.1f / %.2f  Lambda-style %.1f / %.2f\n", 100 * f,
-           pN.med / pe.sN, pG.med / pe.sG, cuts[iBest], muRe, muRe / ratioGN, lN.med / ls.sN, lG.med / ls.sG);
+    int iG = -1; double muGb = 1e99;               // GENIE model re-optimised on its own S and B
+    for (size_t i = 0; i < cuts.size(); ++i) {
+      const Yield& qg = ysG[i];
+      if (qg.rawS < 50 || qg.B <= 0) continue;
+      const double mu = muAt(qg, f);
+      if (mu < muGb) { muGb = mu; iG = i; }
+    }
+    const Yield& qg = ysG[iG];
+    const double muReG = expected(qg.B, std::sqrt(qg.B2 / (qg.B * qg.B) + f * f), std::sqrt(g * g + qg.S2 / (qg.S * qg.S))).med / qg.S;
+    gReN.SetPoint(k, 100 * f, muRe); gReG.SetPoint(k, 100 * f, muReG);
+    printf("  plot f %4.1f%%: PeLEE %.1f / %.2f  re-chosen NuWro (%.3f) %.1f  GENIE (%.3f) %.2f  Lambda-style %.1f / %.2f\n", 100 * f,
+           pN.med / pe.sN, pG.med / pe.sG, cuts[iBest], muRe, cuts[iG], muReG, lN.med / ls.sN, lG.med / ls.sG);
   }
   gStyle->SetOptStat(0); gStyle->SetOptTitle(0);
   TCanvas c("cl", "", 1300, 560); c.Divide(2, 1);

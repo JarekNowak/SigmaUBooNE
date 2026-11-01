@@ -9,6 +9,9 @@
 //  Recorded per event, with no cut applied: the stage reached, nTr, nSh, topo, whether
 //  a muon candidate exists regardless of the earlier cuts, the number of non-muon
 //  tracks (a pair needs two), the true vertex in the FV, and the truth (signal flag).
+//  Signal-definition flags as SigmaSelection.C: the true muon momentum (pmuTrue) and any other
+//  meson at the primary vertex (pi0, eta, eta', K -- the list of SigmaSelection.C; mesonVeto). The analysis signal is
+//  isSig && trueFV && pmuTrue > 0.15 && !mesonVeto.
 //
 //  Output tree "pf"; run: root -l -b -q 'PreselFlow.C+("lists/sig_genie_qe.list","pf_sig.root",true)'
 // ============================================================================
@@ -32,13 +35,14 @@ void PreselFlow(const char* list, const char* out, bool signalOnly = true)
   if (haveSlice) ch.SetBranchAddress("flash_match_nu_slice_ID", &fmSlice);
 
   TFile fo(out, "RECREATE"); TTree T("pf", "Lambda-style preselection flow");
-  int run, sub, evt, isSig, trueFV, slice, recoFV, nTr, nSh, hasMu, nOther, stage;
-  double topoS;
+  int run, sub, evt, isSig, trueFV, slice, recoFV, nTr, nSh, hasMu, nOther, stage, mesonVeto;
+  double topoS, pmuTrue;
   T.Branch("run", &run, "run/I"); T.Branch("sub", &sub, "sub/I"); T.Branch("evt", &evt, "evt/I");
   T.Branch("isSig", &isSig, "isSig/I"); T.Branch("trueFV", &trueFV, "trueFV/I");
   T.Branch("slice", &slice, "slice/I"); T.Branch("recoFV", &recoFV, "recoFV/I"); T.Branch("topo", &topoS, "topo/D");
   T.Branch("nTr", &nTr, "nTr/I"); T.Branch("nSh", &nSh, "nSh/I"); T.Branch("hasMu", &hasMu, "hasMu/I");
   T.Branch("nOther", &nOther, "nOther/I"); T.Branch("stage", &stage, "stage/I");
+  T.Branch("pmuTrue", &pmuTrue, "pmuTrue/D"); T.Branch("mesonVeto", &mesonVeto, "mesonVeto/I");
 
   const Long64_t N = ch.GetEntries();
   printf("  %s: %d files, %lld events\n", list, nf, N);
@@ -48,6 +52,12 @@ void PreselFlow(const char* list, const char* out, bool signalOnly = true)
     if (signalOnly != (bool)isSig) continue;
     run = H.run; sub = H.sub; evt = H.evt;
     trueFV = SigmaFV::isFiducial(H.true_vtx_x, H.true_vtx_y, H.true_vtx_z);
+    pmuTrue = H.h_lepton_mom;
+    mesonVeto = 0;
+    if (H.h_mc_primary_pdg) for (int pd : *H.h_mc_primary_pdg) {
+      const int ap = std::abs(pd);
+      if (ap == 111 || ap == 221 || ap == 331 || ap == 130 || ap == 310 || ap == 311 || ap == 321) mesonVeto = 1;
+    }
     slice = !(haveSlice && fmSlice < 0);
     recoFV = SigmaFV::isFiducial(H.vtx_x, H.vtx_y, H.vtx_z);
     topoS = topo;

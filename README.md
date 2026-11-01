@@ -3,27 +3,36 @@
 Three selections live in this repo. They are fully independent — different ntuple
 formats, different samples, separate inputs and outputs — and can be run side by side.
 
-| chain | format | signal MC | S | B | purity | role |
-|---|---|---|---|---|---|---|
-| `SigmaSelection.C` + BDT | PeLEE | NuWro run3b | 2.12 | 342 | 0.62% | **the analysis**: the only chain that can see data, EXT and dirt |
-| `DumpBDTHyp.C` + BDT | hypana | GENIE | 17.1 | 733 | 2.3% | truth studies; candidate purity, backtracking |
-| `SigmaLambdaSel.C` | hypana | GENIE | 0.90 | 4.38 (3.76 MC + 0.62 EXT) | **17%** | highest purity; needs wire activity: MC + factorised EXT, no data or dirt yet (NuWro: S 0.142) |
+**Current status (2026-11-01).** One signal definition for every chain, sample and generator:
+ν̄μ CC with exactly one Σ⁰ and no other meson (|pdg| 100–999) or strange baryon; true and reco
+vertex in the FV; Λ → pπ⁻; p_μ > 0.15 GeV/c, KE_p > 60 MeV, KE_π > 30 MeV, E_γ > 30 MeV. The
+thresholds are the half-plateau of this detector's right-type reconstruction efficiency
+(`pelee/ThreshStudy.C`, tables `pelee/sigdef_{genie_qe,nuwro}.tsv`). Σ⁰ outside the definition
+are background, each model from its own sample (TreeB sample 6 = GENIE QE, 7 = NuWro). The
+PeLEE BDT was retrained for it; `BDT_MIN = 0.830`.
 
-NuWro yields include hyperon FSI and GENIE yields do not, a model difference of roughly
-4x in the Σ⁰ rate (see "The three signal samples disagree on the absolute Σ⁰ rate"),
-so compare the chains by purity and efficiency, not by S across rows.
+| chain | format | S NuWro / GENIE | B (NuWro / GENIE model) | purity N / G | role |
+|---|---|---|---|---|---|
+| `SigmaSelection.C` + BDT (> 0.830) | PeLEE | 0.572 / 2.53 | 128.0 / 129.4 | 0.44% / 1.9% | data, EXT and dirt all available |
+| `SigmaLambdaSel.C` (2 planes, gap, llrP < 0) | hypana | 0.118 / 0.475 | 2.48 / 2.52 | 4.5% / 16% | **best limit**; needs hypana data and dirt |
+| `DumpBDTHyp.C` + BDT | hypana | — / 17.1 (base def.) | 733 | 2.3% | truth studies |
 
-All yields are POT-scaled to the full RHC data exposure 1.1526e21 (see
-[POT normalisation](#pot-normalisation)). The Lambda-style chain wins decisively on
-purity and on robustness to background systematics, but until data and dirt exist in
-hypana format it cannot produce a result on its own (EXT now does, factorised: see
-"EXT (beam-off) — factorised").
+Defined signal in the FV: 3.98 (NuWro) and 16.05 (GENIE) per 1.1526e21 POT. Expected 90% CL
+limit on μ (median, g = 20%), NuWro / GENIE:
 
-On the expected 90% CL limit, with both chains under one signal model, **the PeLEE chain
-is better than the Λ-style chain at any background systematic below about 20%, and within
-10% of it up to 30%** ([Expected sensitivity](#expected-sensitivity--sensitivityc)). Either result will be a
-limit: the median expected limit is about 3× GENIE's Σ⁰ rate at best, and 18× NuWro's.
-For the PeLEE chain the background systematic sets that number.
+| f | PeLEE at 0.830 | PeLEE, cut re-chosen per f | Λ-style |
+|---|---|---|---|
+| 0% | 39.7 / 8.87 | 39.7 / 8.87 | **35.3 / 8.69** |
+| 10% | 55.3 / 12.45 | 50.8 / 11.92 | **35.5 / 8.72** |
+| 15% | 68.6 / 15.47 | 51.6 / 12.29 | **35.6 / 8.76** |
+| 30% | 107.9 / 24.45 | 55.8 / 12.32 | **36.3 / 8.94** |
+
+**The Λ-style chain gives the better limit at every background systematic**, because the
+definition requires the pπ⁻ pair it reconstructs. The sections below are the history up to
+2026-11-01 and use the base Σ⁰ definition unless stated; their PeLEE numbers (0.779 cut,
+S 2.12 / 8.86, B 345) are superseded by the table above. The NuWro PeLEE file does carry
+`mc_px`, so the muon threshold was always applied to NuWro (the `pmu_nuwro.tsv` table is only
+a fallback).
 
 ## Environment
 
@@ -92,7 +101,8 @@ Detector systematics: `./run_detvar.sh` (see "Detector variations" below).
 - **57 BDT inputs**: track PID/kinematics, inter-candidate distances/angles, Lambda &
   Sigma0 masses, shower energy/size, Lambda/gamma vertex-pointing, pi0 (di-photon)
   variables, the second-shower block, and `HasPair`.
-- **Operating point** `BDT_MIN = 0.779`, the out-of-sample FoM peak of the 2026-10-30
+- **Operating point** `BDT_MIN = 0.830` since 2026-11-01 (training for the restricted signal
+  definition; minimises the expected limit at f = 0–5%). Before: 0.779, the out-of-sample FoM peak of the 2026-10-30
   training (clamped inputs, GENIE + NuWro signal; see "BDT retrained with clamped inputs and
   GENIE signal"). Before: 0.759 (2026-10-18, EXT in the background tree, 95% of each fold).
 
@@ -777,7 +787,7 @@ units of a generator's prediction (μ = 1 is the model), for the PeLEE BDT chain
 ```bash
 cd pelee && root -l -b -q 'Sensitivity.C+'   # reads BDTInput.root and SigmaHists.root, ~2 min
 # with a fifth argument it also draws the limit against f (~6 min):
-root -l -b -q 'Sensitivity.C+("BDTInput.root","SigmaHists.root",0.779,0.20,"limit_vs_f.pdf")'
+root -l -b -q 'Sensitivity.C+("BDTInput.root","SigmaHists.root",0.830,0.20,"limit_vs_f.pdf")'
 root -l -b -q 'NoteFigures.C+("<dir>")'      # BDT score, island display, Lambda mass for the note
 ```
 

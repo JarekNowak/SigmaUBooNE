@@ -86,7 +86,11 @@ static const double TOPO_MIN       = 0.20;   // topological_score cosmic/ν veto
 // CAUTION: at the peak a 2% systematic on the background is +-7.6 events against
 // 2.1 signal, so the systematic budget -- not S/sqrt(S+B) -- should ultimately set
 // this. Rescan after any change to the training or the preselection.
-static const double BDT_MIN        = 0.779;
+// 2026-11-01: retrained for the full signal definition (Lambda -> p pi-, KE_p > 60, KE_pi > 30,
+// E_gamma > 30 MeV; out-of-definition Sigma0 in the background class). The counting FoM now peaks
+// at 0.95 on a background of ~5 raw-weighted events, which is not a usable point; 0.830 minimises
+// the expected limit at f = 0-5% (Sensitivity.C): S 0.57 NuWro, B 128. Was 0.779.
+static const double BDT_MIN        = 0.830;
 static const double M_PROTON       = 0.938272;  // Λ/Σ⁰ mass reconstruction
 static const double M_PION         = 0.139570;
 // Combined proton/pion discriminant D = LLR/σ_LLR + (χ²_p−χ²_π)/σ_Δχ² (high=pion);
@@ -193,6 +197,11 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     bool  fluxRW;        // NuWro: weight onto the current NuMI flux (see FluxRW)
     bool  ppfxMap = false; // no flux-parent record: PPFX CV weight from the overlay's E_nu map
     std::string polW = "";  // Sigma0 polarisation weights "run sub evt w" (PolWeights.C), this production only
+    std::string pmuTab = "";  // true muon momentum "run sub evt p" for files without mc_px, from the hypana
+                              // ntuples of the same production (PreselFlow.C); unused while mc_px is filled
+    std::string sigDef = "";  // signal definition "run sub evt inDef" from the hypana truth (ThreshStudy.C):
+                              // Lambda -> p pi-, KE_p > 60 MeV, KE_pi > 30 MeV, E_gamma > 30 MeV, which the
+                              // PeLEE truth record cannot see. Files without a table count as in-definition.
   };
 
   //  Signal: the run3b NuWro Sigma0 production (2500 overlay jobs on swizzled
@@ -212,7 +221,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   const std::string NUMI = "/data/uboone/new_numi_flux/";
   const std::string DIRT = "/data/uboone/temp/custom_pelee_ntuples/dirt_overlay/";
   std::vector<FileDesc> files = {
-    { SIG,                                                            -1, true,  false, true, false, "pol_nuwro.tsv" }, // 0/1 signal + hyperons
+    { SIG,                                                            -1, true,  false, true, false, "pol_nuwro.tsv", "pmu_nuwro.tsv", "sigdef_nuwro.tsv" }, // 0/1 signal + hyperons
     // 2 background — ALL RHC overlay runs (Run1+2+3+4a+4b+4c), summed POT below
     { NUMI + "Run1_rhc_new_numi_flux_rhc_pandora_ntuple.root",         2, false, false, false },
     { NUMI + "Run2_rhc_new_numi_flux_rhc_pandora_ntuple.root",         2, false, false, false },
@@ -238,7 +247,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
     //  closure test against the NuWro signal model. Until 2026-10-30 this slot held
     //  the NuWro sample itself. Its true in-FV signal is also counted apart
     //  (GenieQE) as the GENIE signal prediction. Flip isData=true for beam-on data.
-    { GENIE_QE,                                                        4, false, false, false, true, "pol_genie_qe.tsv" }, // 4 fake data + GENIE QE signal
+    { GENIE_QE,                                                        4, false, false, false, true, "pol_genie_qe.tsv", "", "sigdef_genie_qe.tsv" }, // 4 fake data + GENIE QE signal
   };
 
   // ── POT / normalization (editable block) ─────────────────────────────────────
@@ -486,6 +495,11 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   //  The GENIE Sigma0 QE sample's true in-FV signal (fake-data slot), same definition.
   double GenieQE[Nc] = {0}, GenieQEW2[Nc] = {0};
   long   GenieQERaw[Nc] = {0};
+  //  base definition (what PeLEE truth sees) for the overlay cross-check, and the Sigma0 events outside
+  //  the full definition, which are background (GENIE QE sample and NuWro, each for its own model)
+  double GenieQEbase[Nc] = {0}; long GenieQEbaseRaw[Nc] = {0};
+  double GenieOut[Nc] = {0}, GenieOutW2[Nc] = {0}; long GenieOutRaw[Nc] = {0};
+  double NuwroOut[Nc] = {0}; long NuwroOutRaw[Nc] = {0};
   std::unordered_set<unsigned long long> seenData;   // run/sub/evt of data events read
 
   // ── Branch variables (declared once, reused across files) ───────────────────
@@ -570,6 +584,8 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
   // ── File loop ───────────────────────────────────────────────────────────────
   for (size_t i_f = 0; i_f < files.size(); i_f++) {
     const FileDesc& fd = files[i_f];
+    const auto pmuMap = fd.pmuTab.empty() ? std::map<unsigned long long, double>() : loadFluxWeights(fd.pmuTab.c_str());
+    const auto defMap = fd.sigDef.empty() ? std::map<unsigned long long, double>() : loadFluxWeights(fd.sigDef.c_str());
     const auto polMap = (hyperonRW && !fd.polW.empty()) ? loadFluxWeights(fd.polW.c_str())
                                                         : std::map<unsigned long long, double>();
 
@@ -762,7 +778,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
       //  is what the HyperonProduction analyzer provides.
       bool hasSigma0 = false;
       double pmu_true = -1.0;
-      bool hasOtherMeson = false;
+      bool hasOtherMeson = false; int nSigma0 = 0;
       if (mc_pdg) {
         for (size_t k = 0; k < mc_pdg->size(); ++k) {
           const int pd = mc_pdg->at(k), ap = std::abs(pd);
@@ -771,11 +787,13 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
             pmu_true = std::sqrt( mc_px->at(k)*mc_px->at(k)
                                 + mc_py->at(k)*mc_py->at(k)
                                 + mc_pz->at(k)*mc_pz->at(k) );
-          //  Any meson at the primary vertex. The Lambda decay pi- is not in this
-          //  list (see above), so this vetoes genuinely EXTRA mesons and does not
-          //  reject the signal's own decay products. pi0, eta, and the kaons.
-          if (ap == 111 || ap == 221 || ap == 331 ||
-              ap == 130 || ap == 310 || ap == 311 || ap == 321) hasOtherMeson = true;
+          //  Any other meson or strange particle at the primary vertex (signal definition,
+          //  2026-11-01): every meson (|pdg| 100-999, charged pions and kaons included) and every
+          //  strange baryon besides one Sigma0. The Lambda decay pi- is not in this list (see
+          //  above), so the signal's own decay products are not vetoed.
+          if (ap >= 100 && ap <= 999) hasOtherMeson = true;
+          if (pd == 3212) nSigma0++;
+          else if (ap >= 3000 && ap <= 3999) hasOtherMeson = true;
         }
       }
       //  Muon threshold. The muon IS in the record, mean momentum 1.005 GeV/c, and
@@ -787,6 +805,10 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
       //  reject EVERY event as non-signal, so fall back to not applying it and say so
       //  once. Preferring a wrong-but-loud failure to a wrong-and-silent one.
       static bool warnedNoMuP = false;
+      if ( pmu_true < 0.0 && !pmuMap.empty() ) {
+        auto im = pmuMap.find(rseKey(run, sub, evt));
+        if ( im != pmuMap.end() ) pmu_true = im->second;
+      }
       const bool haveMuP = ( pmu_true >= 0.0 );
       if ( !haveMuP && !warnedNoMuP ) {
         std::cout << "  WARNING: mc_px/py/pz unavailable -- the truth muon-momentum "
@@ -801,8 +823,18 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
       //  generator happened to produce, and because a different generator -- the GENIE
       //  overlay samples in preparation -- may well produce Sigma0 with an associated
       //  pi0.
-      bool IsSignal = (nu_pdg == -14) && (ccnc == 0) && hasSigma0
-                      && muAboveThreshold && !hasOtherMeson;
+      if (nSigma0 > 1) hasOtherMeson = true;
+      //  isSigBase: what the PeLEE truth record can see. inDef: the rest of the definition (Lambda -> p pi-
+      //  and the proton, pion and photon thresholds) from the hypana truth of the same production.
+      const bool isSigBase = (nu_pdg == -14) && (ccnc == 0) && hasSigma0
+                             && muAboveThreshold && !hasOtherMeson;
+      bool inDef = true;
+      if (!defMap.empty()) { auto id = defMap.find(rseKey(run, sub, evt)); inDef = (id != defMap.end() && id->second > 0.5); }
+      bool IsSignal = isSigBase && inDef;
+      //  Sigma0 events outside the definition are background, from each model's own sample:
+      //  NuWro (sample 1, tree code 7) and the GENIE QE sample (tree code 6).
+      const bool outDef = isSigBase && !inDef &&
+          SigmaFV::isFiducial(true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z);
 
       // ── Sample assignment ────────────────────────────────────────────────────
       int s = (fd.sample >= 0) ? fd.sample : (IsSignal ? 0 : 1);
@@ -1091,9 +1123,10 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
         if (bdtReady) bdtg = reader->EvaluateMVA(bdtIsOdd > 0.5 ? "BDTG_A" : "BDTG_B");
         const bool genieSig = (s == 4 && IsSignal &&
             SigmaFV::isFiducial(true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z));
-        if (writeBDT && (s != 4 || genieSig) && !ovlSig) {
+        const bool genieOut = (s == 4 && outDef);
+        if (writeBDT && (s != 4 || genieSig || genieOut) && !ovlSig) {
           bool hasPi0 = false; if (mc_pdg) for (int p : *mc_pdg) if (p == 111) { hasPi0 = true; break; }
-          tScore  = bdtg;            tSample = s;
+          tScore  = bdtg;            tSample = genieOut ? 6 : (fd.sample == -1 && outDef ? 7 : s);
           tNuPdg  = nu_pdg;          tCcnc   = ccnc;       tInter = interaction;
           tNuE    = nu_e;            tHasPi0 = hasPi0 ? 1 : 0;
           if (fd.isData) {               // EXT: no backtracking, and all of it is cosmic
@@ -1149,7 +1182,7 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
               for (int j = 0; j < NPV; j++)
                 if (!std::isfinite(pfpv[k][j])) pfpv[k][j] = -1.0f;
           }
-          if (s == 0) TreeS->Fill(); else if (s == 4) TreeG->Fill(); else TreeB->Fill();
+          if (s == 0) TreeS->Fill(); else if (s == 4 && !genieOut) TreeG->Fill(); else TreeB->Fill();
         }
       }
       bool sel_bdt = bdtReady ? (bdtg > BDT_MIN) : true;   // pass-through if no weights
@@ -1166,6 +1199,13 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
       //  GENIE QE signal: counted here, and still filled below as fake data.
       if (s == 4 && IsSignal && SigmaFV::isFiducial(true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z))
         for (int c = 0; c <= cmax; c++) { GenieQE[c] += W; GenieQEW2[c] += W * W; GenieQERaw[c]++; }
+      //  the same on the base definition, for the cross-check against the overlay's own Sigma0
+      if (s == 4 && isSigBase && SigmaFV::isFiducial(true_nu_vtx_x, true_nu_vtx_y, true_nu_vtx_z))
+        for (int c = 0; c <= cmax; c++) { GenieQEbase[c] += W; GenieQEbaseRaw[c]++; }
+      if (s == 4 && outDef)
+        for (int c = 0; c <= cmax; c++) { GenieOut[c] += W; GenieOutW2[c] += W * W; GenieOutRaw[c]++; }
+      if (fd.sample == -1 && outDef)
+        for (int c = 0; c <= cmax; c++) { NuwroOut[c] += W; NuwroOutRaw[c]++; }
       if (dvT) {
         dvRun = run; dvSub = sub; dvEvt = evt; dvNuE = nu_e; dvSig = (s == 0);
         dvCmax = cmax; dvBdtg = bdtg; dvW = W; dvT->Fill();
@@ -1284,11 +1324,18 @@ void SigmaSelection(const char* outname = "SigmaHists.root", bool writeBDT = tru
               << std::setw(11) << std::fixed << std::setprecision(3) << GenieQE[c]
               << std::setw(8) << std::setprecision(2) << (GenieQE[0] > 0 ? 100.0 * GenieQE[c] / GenieQE[0] : 0.0)
               << std::setw(10) << std::setprecision(3) << OvlSigQE[c] << std::setw(8) << OvlSigQERaw[c]
-              << std::setw(11) << (OvlSigQE[c] > 0 ? GenieQE[c] / OvlSigQE[c] : 0.0)
+              << std::setw(11) << (OvlSigQE[c] > 0 ? GenieQEbase[c] / OvlSigQE[c] : 0.0)
               << std::setw(11) << nonQE << std::setw(12) << tot
               << std::setw(12) << (Selected[c][0] > 0 ? tot / Selected[c][0] : 0.0) << "\n";
   }
-  std::cout << "  S_GENIE = QE sample + overlay non-QE signal. Fake-data slot = the whole QE sample.\n";
+  std::cout << "  S_GENIE = QE sample (full signal definition) + overlay non-QE signal. sample/ovl compares the QE\n"
+               "  sample with the overlay's own Sigma0 on the BASE definition (no Lambda decay or p/pi/gamma\n"
+               "  thresholds: the overlay has no decay truth). Fake-data slot = the whole QE sample.\n";
+  std::cout << "  Sigma0 outside the full definition (background, each model's own sample):\n";
+  for (int c = 0; c < Nc; c++)
+    std::cout << "    " << std::left << std::setw(18) << CutName[c] << std::right << std::fixed << std::setprecision(3)
+              << "  GENIE " << std::setw(9) << GenieOut[c] << " (" << GenieOutRaw[c] << " raw)"
+              << "   NuWro " << std::setw(9) << NuwroOut[c] << " (" << NuwroOutRaw[c] << " raw)\n";
   std::cout << "=============================================================================\n";
   fout->cd();
   TH1D* hGenie = new TH1D("GenieSignal", "GENIE overlay signal per cut (not in B);cut;events", Nc, 0, Nc);
