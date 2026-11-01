@@ -1,0 +1,68 @@
+# Reco2 (or reco1) samples to transfer from FNAL for the Lambda-style (hypana) chain.
+# See ../Docs/RequiredSamples.md for why each is needed, sizes and priorities.
+# Columns (TAB separated):
+#   key      short name: sub-definition <SAMUSER>_sigma_<key>, local dir <DEST_ROOT>/<key>
+#   block    R = RHC required, F = FHC required, E = EXT (decision), O = optional, D = beam-on data
+#   blind    1 = beam-on data: refused without --unblind
+#   tier     reco2 (hypana directly) or reco1 (run our reco2 first)
+#   dims     SAM dimensions of the sample
+# Horn-mode splits by run number (from the PeLEE split macros): Run1 FHC run <= 6748, RHC run >= 6749;
+# Run4c RHC run <= 21410, FHC run > 21410.
+#key	block	blind	tier	dims
+dirt_rhc_run3b	R	0	reco2	defname: prodgenie_numi_uboone_overlay_dirt_rhc_mcc9_run3b_v28_all
+dv_hyp_rhc_CV	R	0	reco2	defname: cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_CV_reco2
+dv_hyp_rhc_LYDown	R	0	reco2	defname: cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_LYDown_reco2
+dv_hyp_rhc_LYRayleigh	R	0	reco2	defname: cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_LYRayleigh_reco2
+dv_hyp_rhc_LYAttenuation	R	0	reco2	defname: cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_LYAttenuation_reco2
+dv_hyp_rhc_Recomb2	R	0	reco2	defname: cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_Recomb2_reco2
+dv_hyp_rhc_SCE	R	0	reco2	defname: cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_SCE_reco2
+dv_hyp_rhc_WireModX	R	0	reco2	defname: cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_WireModX_reco2
+dv_hyp_rhc_WireModYZ	R	0	reco2	defname: cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_WireModYZ_reco2
+dv_hyp_rhc_WireModThetaXZ	R	0	reco2	defname: cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_WireModThetaXZ_reco2
+dv_hyp_rhc_WireModThetaYZ	R	0	reco2	defname: cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_WireModThetaYZ_reco2
+ovl_rhc_run2_reco1	R	0	reco1	defname: Run2_RHC_Nu_Overlay_reco1_reco1_reco1
+ovl_rhc_run3_reco1	R	0	reco1	defname: Run3_RHC_Nu_Overlay_Reco1_fix_gen_stash_reco1_reco1
+ovl_rhc_run4a_reco1	R	0	reco1	defname: run_4a_numi_rhc_g4_10_4_nu_overlay_reco1_reco1
+ovl_rhc_run1_reco1	R	0	reco1	defname: NuMI_Nuw_Flux_Run1_RHC_Reco1_jh_reco1_reco1
+nuwro_hyp_rhc_run3b	R	0	reco2	defname: cthorpe_prod_numi_uboone_overlay_rhc_mcc9_run3b_v51_nuwro_hyperon_nuwro_reco2_reco2
+ext_rhc_run3b	E	0	reco2	defname: prod_extnumi_mcc9_v08_00_00_45_run3_run3b_reco2_all_reco2
+ext_rhc_run2b	E	0	reco2	defname: prod_extnumi_swizzle_crt_inclusive_v4b_offbeam_run2_reco2_new2_run2_reco2_all
+ext_rhc_run4b	E	0	reco2	defname: Run_4b_NuMI_beam_off_Pandora_Reco2_run4b_reco2_all
+ext_rhc_run1	E	0	reco2	defname: prod_mcc9_v08_00_00_45_extnumi_reco2_run1_all_reco2 and run_number >= 6749
+ovl_fhc_run12_reco1	F	0	reco1	defname: prodgenie_numi_fhc_nu_overlay_newflux_run12_reco1
+dirt_fhc_run1	F	0	reco2	defname: prodgenie_numi_uboone_overlay_dirt_fhc_mcc9_run1_v28_all
+ext_fhc_run1	F	0	reco2	defname: prod_mcc9_v08_00_00_45_extnumi_reco2_run1_all_reco2 and run_number <= 6748
+dv_hyp_fhc_CV	F	0	reco2	defname: cthorpe_make_hyperon_events_run1_detvar_CV_hyperon_reco2_reco2
+dv_hyp_fhc_LYDown	F	0	reco2	defname: cthorpe_make_hyperon_events_run1_detvar_LYDown_hyperon_reco2_reco2
+dv_hyp_fhc_LYRayleigh	F	0	reco2	defname: cthorpe_make_hyperon_events_run1_detvar_LYRayleigh_hyperon_reco2_reco2
+dv_hyp_fhc_LYAttenuation	F	0	reco2	defname: cthorpe_make_hyperon_events_run1_detvar_LYAttenuation_hyperon_reco2_reco2
+dv_hyp_fhc_Recomb2	F	0	reco2	defname: cthorpe_make_hyperon_events_run1_detvar_Recomb2_hyperon_reco2_reco2
+dv_hyp_fhc_SCE	F	0	reco2	defname: cthorpe_make_hyperon_events_run1_detvar_SCE_hyperon_reco2_reco2
+dv_hyp_fhc_WireModX	F	0	reco2	defname: cthorpe_make_hyperon_events_run1_detvar_WireModX_hyperon_reco2_reco2
+dv_hyp_fhc_WireModYZ	F	0	reco2	defname: cthorpe_make_hyperon_events_run1_detvar_WireModYZ_hyperon_reco2_reco2
+dv_hyp_fhc_WireModThetaXZ	F	0	reco2	defname: cthorpe_make_hyperon_events_run1_detvar_WireModThetaXZ_hyperon_reco2_reco2
+dv_hyp_fhc_WireModThetaYZ	F	0	reco2	defname: cthorpe_make_hyperon_events_run1_detvar_WireModThetaYZ_hyperon_reco2_reco2
+genie_hyp_fhc_run1	F	0	reco2	defname: cthorpe_make_hyperon_events_reco2_numi_fhc_run1_pt1_hyperon_reco2_reco2
+genie_hyp_fhc_run1_v51	F	0	reco2	defname: cthorpe_prod_numi_uboone_overlay_fhc_mcc9_run1_v51_GENIE_hyperon_real_GENIE_reco2_reco2
+nuwro_hyp_fhc_run1_v51	F	0	reco2	defname: prod_numi_uboone_overlay_fhc_mcc9_run1_v51_nuwro_hyperon_nuwro_reco2_reco2
+ovl_rhc_run4b	O	0	reco2	defname: run4b_numi_rhc_nu_overlay_Pandora_reco2_v08_00_00_63_run4b_reco2
+dirt_rhc_run4a	O	0	reco2	defname: run_4a_numi_rhc_dirt_overlay_pandora_unified_reco2_run4a_rhc_reco2
+dirt_rhc_run4b	O	0	reco2	defname: numi_run4b_rhc_dirt_overlay_pandora_unified_reco2_run4b_reco2
+ovl_fhc_run4c	O	0	reco2	defname: numi_run4c_fhc_nu_overlay_pandora_unified_reco2_run4c_reco2
+ovl_fhc_run4d	O	0	reco2	defname: run4d_numi_fhc_nu_overlay_pandora_unified_reco2_run4d_fhc_reco2
+ovl_fhc_run5	O	0	reco2	defname: NuMI_Run5_FHC_nu_overlay_pandora_Reco2_run5_reco2
+ext_fhc_run2a	O	0	reco2	defname: prod_extnumi_swizzle_inclusive_v4_run2a_reco2_run2a_all_reco2
+ext_fhc_run4c	O	0	reco2	defname: run4c_numi_beam_off_pandora_reco2_run4c_reco2_all and run_number > 21410
+ext_fhc_run4d	O	0	reco2	defname: run4d_numi_beam_off_pandora_reco2_run4d_reco2_all
+ext_fhc_run5	O	0	reco2	defname: run5_numi_beam_off_pandora_reco2_all_run5_reco2_all
+data_rhc_run1	D	1	reco2	defname: prod_mcc9_v08_00_00_45_numi_reco2_run1_beam_good_reco2 and run_number >= 6749
+data_rhc_run2b	D	1	reco2	defname: prod_numi_swizzle_inclusive_v4b_run2_beamon_run2_reco2_run2_beam_good_reco2
+data_rhc_run3b	D	1	reco2	defname: prod_numi_mcc9_v08_00_00_45_run3b_run3b_reco2_beam_good_reco2
+data_rhc_run4a	D	1	reco2	defname: run4a_NuMI_RHC_beam_on_pandora_reco2_reco2_reco2_beam_good
+data_rhc_run4b	D	1	reco2	defname: Run_4b_NuMI_beam_on_Pandora_Reco2_run4b_reco2_beam_good
+data_rhc_run4c	D	1	reco2	defname: Run_4c_NuMI_beam_on_Pandora_Reco2_run4c_reco2_beam_good and run_number <= 21410
+data_fhc_run1	D	1	reco2	defname: prod_mcc9_v08_00_00_45_numi_reco2_run1_beam_good_reco2 and run_number <= 6748
+data_fhc_run2a	D	1	reco2	defname: prod_numi_swizzle_inclusive_v4_run2_reco2_run2a_beam_good_reco2
+data_fhc_run4c	D	1	reco2	defname: Run_4c_NuMI_beam_on_Pandora_Reco2_run4c_reco2_beam_good and run_number > 21410
+data_fhc_run4d	D	1	reco2	defname: run4d_NuMI_beam_on_pandora_unified_reco2_run4d_reco2_beam_good
+data_fhc_run5	D	1	reco2	defname: run5_numi_beam_on_pandora_reco2_all_run5_reco2_beam_good
