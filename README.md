@@ -1203,7 +1203,12 @@ The polarisation weight moves the selected yields by −0.2% (NuWro, PeLEE) to �
   - **Σ⁰ mass window, maximum photon distance, photon pointing (`PhotonPoint.C`), shower shape** (hits/plane, length, opening angle, Molière angle, dE/dx): no limit gain.
   - **Muon-track photon veto** (photon start < 5 cm from the muon axis, 20 cm to L+10 along it): removes 2 of 4 real Λ for 6% signal, mean expected limit 9.32 vs 9.38. Starting the zone at the vertex flags 23% of true Σ⁰ photons.
 - **Full cut scan (`IslandOptimise.py`):** 20% on the full sample, ~6% out of sample. The background statistics (8–23 raw) don't support a finer optimisation.
-- **Metric:** at B ≈ 2–4 the median expected limit moves in integer steps; the mean over n ~ Pois(B) is the steadier guide. Backups of the unweighted outputs:
+- **Metric:** at B ≈ 2–4 the median expected limit moves in integer steps; the mean over n ~ Pois(B) is the steadier guide.
+- **Loosening single cuts** (mass window, pointing, decay length, gap, planes, PID threshold): no gain. The signal they recover comes with proportionally more background.
+- **No-shower events (2026-11-01, not used):** the 0 < nShowers < 4 preselection drops 20% of signal at that stage, events where the Σ⁰ photon wasn't reconstructed.
+  - Taken through the chain as a second bin: `IslandProcess.C` `showerMode=1` → `isl_*_nsh0.root`; `PreselFlow.C` for the early-stage flow.
+  - Result: S 0.213 GENIE / 0.059 NuWro on B 5.64 (MC 4.04 + EXT 1.53 ± 0.88 from the hypana EXT run + 0.07), purity 3.7%.
+  - Pooled with the main bin it is worse (mean limit 9.98 vs 9.39). As a separate bin it would gain 7–8%, so the user decided not to use it. Backups of the unweighted outputs:
 `SigmaHists.root.noHypRW`, `BDTInput.root.noHypRW`. ACLiC + TMVA needs
 `LD_LIBRARY_PATH=$HOME/lib/flexiblas-shim:$LD_LIBRARY_PATH`.
 

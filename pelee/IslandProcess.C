@@ -66,7 +66,11 @@ static const char* STNAME[NST] = { "AllEvents","SliceID","FiducialV","CosmicVeto
 
 void IslandProcess(const char* list = "lists/sig_genie_qe.list", int maxFiles = 0,
                    bool signalOnly = true, const char* outName = "isl_sig_genie_qe.root",
-                   double potScale = 1.0, const char* fluxWeights = "")
+                   double potScale = 1.0, const char* fluxWeights = "",
+                   int showerMode = 0)   // 0: 0 < nShowers < 4 (standard); 1: ONLY events with no
+                                         // shower (2026-11-01: the Sigma0 photon is unreconstructed in
+                                         // 20% of signal at this stage, and the chain uses the photon only
+                                         // for the gap cut). Combine a mode-1 cache with the standard one.
 {
   const std::map<unsigned long long,double> FW = signalOnly ? loadFluxWeights(fluxWeights)
                                                             : std::map<unsigned long long,double>();
@@ -172,7 +176,8 @@ void IslandProcess(const char* list = "lists/sig_genie_qe.list", int maxFiles = 
       dv[i] = (st[i]-vtx).Mag();
     }
     nTr=0; nSh=0; for(int i=0;i<n;++i)(isTrk(i)?nTr:nSh)++;
-    if(!(nSh>0 && nSh<NSHOWERS_MAX)) continue;
+    if(showerMode == 0 && !(nSh>0 && nSh<NSHOWERS_MAX)) continue;
+    if(showerMode == 1 && nSh != 0) continue;
     if(!(nTr < NTRACKS_MAX)) continue;                            stage=ST_NSHOW;  nCut[ST_NSHOW]++;
 
     int mu = -1;
