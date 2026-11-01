@@ -22,14 +22,9 @@ transferred or processed through hypana until the selection, the background mode
 systematics are frozen and unblinding is approved. Everything before Section 6 is MC, beam-off or
 dirt.
 
-**Transfer.** Prestage on a uboone gpvm, then copy with the existing staging tools
-(`production/nuwro_prod`: `stage_ext.sh`, `list_extra_ext.sh`):
-
-```
-samweb prestage-dataset --defname=<def>
-```
-
-Use a `with limit N` sub-definition where only part of a set is needed.
+**Transfer.** Use the tools and instructions in [`../transfer/README.md`](../transfer/README.md).
+They prestage on a gpvm (`gpvm_prestage.sh`), then copy on lapx (`fetch_sample.sh`,
+`fetch_loop.sh`). Every sample below has a key in `transfer/samples.tsv`.
 
 ---
 
