@@ -1,0 +1,8 @@
+# As genie_lambdaccqe_numi_fhc_standalone.fcl, but with GENIE's Delta S = 1 QE cross section
+# from genie::HypQELTracePXSec (full contraction, correct hyperon masses) instead of
+# genie::PaisQELLambdaPXSec, whose Sigma0/Sigma- are 1.85x too high and Lambda 0.80x too low.
+# Needs hypfix/env_fix.sh sourced (GXMLPATH + LD_LIBRARY_PATH); gen_genie_chunk.sh does this
+# when the fcl name contains "hypfix". See hypfix/README.md.
+#include "genie_lambdaccqe_numi_fhc_standalone.fcl"
+
+physics.producers.generator.XSecTable: "/data/uboone/genie_samples/hypfix_splines/gxspl-FNALsmall-hypfix.xml"
