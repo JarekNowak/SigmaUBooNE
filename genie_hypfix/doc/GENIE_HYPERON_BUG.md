@@ -16,8 +16,8 @@ computed with the same SU(3) form factors. Against that, GENIE's cross section i
 - Σ⁰ and Σ⁻: **1.43–1.49× too high** (1–5 GeV);
 - Σ⁰/Λ: 0.45 instead of 0.24.
 
-When the final baryon has the nucleon mass, the Pais expression reproduces Llewellyn Smith CCQE,
-which is why the error went unnoticed. NuWro's hyperon model agrees with the contraction.
+When the final baryon has the nucleon mass, the main error vanishes and the expression comes within
+1% of Llewellyn Smith CCQE, which is why it went unnoticed. The two faulty lines are below. NuWro's hyperon model agrees with the contraction.
 
 We replaced the model with `genie::HypQELTracePXSec`, which evaluates the contraction numerically.
 Everything else is kept: form factors, Cabibbo angle, integration and nuclear scaling.
@@ -41,6 +41,57 @@ NuWro, for the same form factors. Two independent calculations then agree with N
 - its C++ port into GENIE.
 
 The Python calculation also reproduces Llewellyn Smith CCQE (ν 1.06, ν̄ 0.41 ×10⁻³⁸ cm² at 1 GeV).
+
+## The faulty lines
+
+The code is `src/Physics/Strange/XSection/PaisQELLambdaPXSec.cxx`, `PaisQELLambdaPXSec::XSec`. It is
+unchanged on GENIE `master` (checked 2026-11-02). GENIE writes dσ/dQ² as a quadratic in (s−u),
+built from three structure terms `w1`, `w2`, `w3`. There are two errors.
+
+**1. The Gordon coefficient for equal masses (the main bug).** For on-shell spinors,
+f₁γ^μ + i(ξF₂/2M)σ^{μν}q_ν = [f₁ + ξF₂(M_N+M_Y)/2M] γ^μ − (ξF₂/2M)(p_N+p_Y)^μ. GENIE writes the
+γ^μ coefficient as `(F1V + xiF2V)`, which is right only when M_Y = M_N = M. It appears in `w1`,
+`w2` and `w3`.
+
+**2. A missing M² in the second term.** `-4*(Mnuc2*v2 - q2)*w2` subtracts q² (GeV²) from
+M²ν² (GeV⁴). The correct term is `-4*Mnuc2*(v2 - q2)*w2`.
+
+```cpp
+// GENIE (v3_00_04 ... master)
+double w1 = (Mm2 - q2)/(4*Mnuc2)*TMath::Power((F1V + xiF2V), 2) + (Mp2 - q2)/(4*Mnuc2) * FA2;
+double w2 = FA2 + TMath::Power((F1V + xiF2V - Mp * xiF2V / (2 * Mnuc)), 2) - q2 / Mnuc2 * TMath::Power((xiF2V / 2), 2);
+double w3 = 2 * FA * (F1V + xiF2V);
+double xsec = Gf*fSin8c2 / (16*Mnuc2*E2) * (-8*Mnuc2*q2*w1 - 4*(Mnuc2*v2 - q2)*w2 - sign*2*(s - u)*q2*w3 + (s-u)*(s-u)*w2);
+
+// corrected
+double FM = F1V + Mp * xiF2V / (2 * Mnuc);        // gamma^mu coefficient for M_Y != M_N
+double w1 = (Mm2 - q2)/(4*Mnuc2)*TMath::Power(FM, 2) + (Mp2 - q2)/(4*Mnuc2) * FA2;
+double w2 = FA2 + TMath::Power(F1V, 2) - q2 / Mnuc2 * TMath::Power((xiF2V / 2), 2);   // (FM - Mp xiF2V/2M) = F1V
+double w3 = 2 * FA * FM;
+double xsec = Gf*fSin8c2 / (16*Mnuc2*E2) * (-8*Mnuc2*q2*w1 - 4*Mnuc2*(v2 - q2)*w2 - sign*2*(s - u)*q2*w3 + (s-u)*(s-u)*w2);
+```
+
+With a massless lepton, the corrected expression equals the exact contraction identically
+(symbolic check, `derivation/sym.py`). What remains are the lepton-mass terms that GENIE drops
+everywhere in this class. Effect of each fix on σ, relative to the exact contraction:
+
+| | GENIE | fix 1 only | fix 2 only | fixes 1+2 |
+|---|---|---|---|---|
+| Σ⁰, 1 / 2 GeV | 1.523 / 1.489 | 0.990 / 0.998 | 1.546 / 1.494 | 1.007 / 1.002 |
+| Λ, 1 / 2 GeV | 0.788 / 0.823 | 0.978 / 0.995 | 0.807 / 0.828 | 1.001 / 1.001 |
+| M_Y = M_N, 1 GeV | 0.990 | 0.990 | 1.003 | 1.003 |
+
+The Gordon coefficient is the factor 1.5. The missing M² is 1–2%, which is why the equal-mass limit
+looked right (1% off). The rest, 0.1–0.7%, is the lepton-mass terms. `genie::HypQELTracePXSec`
+evaluates the full contraction, lepton-mass terms included. The five corrected lines above are the
+minimal patch to the existing class.
+
+`derivation/`:
+- `terms.py` extracts the coefficients of (s−u)⁰, (s−u)¹ and (s−u)² from the exact trace, one
+  coupling at a time;
+- `exact.py` checks the closed form against the trace (agreement to 3×10⁻¹² for every coupling
+  combination);
+- `sym.py` derives the closed form, applies each fix, and integrates σ.
 
 ## Cross section
 
