@@ -81,6 +81,19 @@ reprocessed).
 
 ## Step 3: hypana ntuples
 
+**reco2 samples:**
+```bash
+CAMPAIGN_NICE=5000 ./submit_hypana_sample.sh dirt_rhc_run3b     # one SLURM task per file; re-run to resubmit failures
+```
+It writes `/data/uboone/<category>/hypana/<key>/` with `run_HyperonProduction.fcl`, the overlay config
+(set `HYPANA_FCL` for data). A file takes about 3 minutes.
+
+**Flux weights (old-flux samples, e.g. the RHC dirt):** use
+`production/nuwro_prod/flux_rw/reco2_flux_weights.C` with the sample's MCTruth label (dirt:
+`simb::MCTruths_generator__SimInfoMixer.obj`). Run it inside the container after `setup_env.sh`.
+
+### Older notes
+
 - **reco2 samples:** run HyperonProduction on `files.list`, the same way as the existing hypana
   productions (`production/nuwro_prod/ana_file.sh`, `submit_ana.sh`).
 - **reco1 samples** (`ovl_*_reco1`): run our reco2 first, as for the RHC background extension (see
