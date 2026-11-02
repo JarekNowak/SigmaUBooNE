@@ -14,7 +14,10 @@ v3_00_06) gets the hyperon–nucleon mass-difference terms wrong. Against the fu
 of the leptonic and hadronic tensors with the same SU(3) form factors, its ν̄ Λ cross section
 is ×0.80 and its Σ⁰ and Σ⁻ ×1.5–1.85; Σ⁰/Λ comes out 0.45 instead of 0.19. NuWro's
 `Singh_Model` agrees with the contraction (0.21 on Ar). With the final baryon at the nucleon
-mass the Pais formula does reproduce Llewellyn Smith CCQE, which is why it looked fine.
+mass the Pais formula comes within 1% of Llewellyn Smith CCQE, which is why it looked fine.
+The faulty lines are an equal-mass Gordon coefficient, `(F1V + xiF2V)` in `w1`/`w2`/`w3`
+(the factor 1.5), and a missing M² in the `w2` term of `xsec` (1–2%); the corrected lines are
+in `doc/GENIE_HYPERON_BUG.md`, "The faulty lines".
 The analysis-side evidence is in `Sigma/README.md`, "GENIE hyperon cross section".
 
 `genie::HypQELTracePXSec` is a drop-in replacement: same channels (ν̄p→l⁺Λ, ν̄p→l⁺Σ⁰,
