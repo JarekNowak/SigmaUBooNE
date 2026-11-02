@@ -20,7 +20,7 @@ used once unblinding is approved.
 | `fetch_worker.sh` | lapx (container) | the SAM/xrootd part of `fetch_sample.sh`; not run directly |
 | `fetch_loop.sh` | lapx | renew the token and re-run `fetch_sample.sh` every 30 min until a sample is complete |
 | `status.sh` | lapx | local against listed files per sample (`-s`: also the SAM size) |
-| `sample_lookup.sh` | — | shared helpers; `SAMUSER` (default `janow`) and `DEST_ROOT` (default `/data/uboone/SigmaFiles/transfer`) |
+| `sample_lookup.sh` | — | shared helpers; `SAMUSER` (default `janow`), and the destination `$DATA_ROOT/<category>/<tier>/<key>` (default root `/data/uboone`) |
 
 ## Step 1: prestage (FNAL gpvm)
 
@@ -62,7 +62,7 @@ nohup ./fetch_loop.sh dv_hyp_rhc_CV dv_hyp_rhc_LYDown > loop_dv.log 2>&1 &   # l
 ./status.sh                                 # progress of every sample
 ```
 
-Each sample lands in `/data/uboone/SigmaFiles/transfer/<key>/` with:
+Each sample lands in `/data/uboone/<category>/<tier>/<key>/`, where the category is dirt, detvars, EXT, overlay, hyperon or beam_on, and the tier is reco2 or reco1. For example, `/data/uboone/dirt/reco2/dirt_rhc_run3b/`. Each directory holds:
 - `pnfs.list`: the SAM file list;
 - `files.list`: the complete local files, which is the input list for the next step;
 - `.xrdcp_errors.log`.

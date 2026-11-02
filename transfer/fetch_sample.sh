@@ -10,7 +10,7 @@
 #     -M max     stop after max new copies (0 = only build the file list and report)
 #     --relist   rebuild the pnfs list from SAM (default: reuse <dest>/pnfs.list if present)
 #     --unblind  allow beam-on keys (blind analysis: only after unblinding is approved)
-# Destination: $DEST_ROOT/<key> (default /data/uboone/SigmaFiles/transfer/<key>); writes
+# Destination: $DATA_ROOT/<category>/<tier>/<key> (e.g. /data/uboone/dirt/reco2/dirt_rhc_run3b); writes
 #   pnfs.list  (SAM -> dCache paths), files.list (complete local files), .xrdcp_errors.log
 #
 # Credentials: a uboone bearer token, from ../../production/nuwro_prod/get_token.sh (renew every ~3 h;
@@ -33,7 +33,7 @@ done
 lookup "$KEY" || { echo "unknown key $KEY"; exit 1; }
 if [ "$S_BLIND" = 1 ] && [ $UNBLIND = 0 ]; then echo "REFUSED: $KEY is beam-on data (blind analysis); needs --unblind"; exit 1; fi
 
-DEST="$DEST_ROOT/$KEY"; mkdir -p "$DEST"
+DEST="$(destdir "$KEY")"; mkdir -p "$DEST"
 # keep >= 5 TB free on /data
 free=$(df -B1T --output=avail /data | tail -1 | tr -d ' ')
 [ "$free" -ge 5 ] || { echo "ERROR: only ${free} TB free on /data"; exit 1; }

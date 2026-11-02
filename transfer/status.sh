@@ -6,7 +6,7 @@ source "$(dirname "$0")/sample_lookup.sh"
 SAM=0; [ "${1:-}" = "-s" ] && SAM=1
 printf "%-28s %-5s %-5s %8s %8s %9s\n" key block blind local listed localTB
 for k in $(list_keys); do
-  lookup "$k"; d="$DEST_ROOT/$k"
+  lookup "$k"; d="$(destdir "$k")"
   nl=$( [ -s "$d/files.list" ] && wc -l < "$d/files.list" || echo 0)
   np=$( [ -s "$d/pnfs.list" ] && wc -l < "$d/pnfs.list" || echo -)
   tb=$( [ -d "$d" ] && du -s --block-size=1G "$d" 2>/dev/null | awk '{printf "%.2f", $1/1000}' || echo 0)

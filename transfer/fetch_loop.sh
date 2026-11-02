@@ -16,7 +16,7 @@ for c in $(seq 1 "$MAXCYCLES"); do
   done_all=1
   for k in "$@"; do
     "$TDIR/fetch_sample.sh" "$k" -P "$PAR" | grep -v '^$'
-    d="$DEST_ROOT/$k"
+    d="$(destdir "$k")"
     [ -s "$d/pnfs.list" ] && [ "$(wc -l < "$d/files.list")" -eq "$(wc -l < "$d/pnfs.list")" ] || done_all=0
   done
   [ $done_all = 1 ] && { echo "all complete"; exit 0; }
