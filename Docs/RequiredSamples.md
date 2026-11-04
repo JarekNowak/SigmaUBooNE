@@ -91,7 +91,7 @@ These are needed only if the MC must cover each run period rather than one perio
 
 | sample | SAM definition | files | TB |
 |---|---|---|---|
-| Overlay Run4b RHC reco2 | `run4b_numi_rhc_nu_overlay_Pandora_reco2_v08_00_00_63_run4b_reco2` | 4,506 | 4.22 |
+| Overlay Run4b RHC reco2 (now required: background MC) | `numi_run4b_rhc_nu_overlay_pandora_unified_reco2_run4b_reco2` (v08_00_00_69, PeLEE's parent). **Not** `run4b_numi_rhc_nu_overlay_Pandora_reco2_v08_00_00_63_run4b_reco2`: its final `pandora` collection has no neutrino PFParticle (slice ID failed) | 3,622 | 4.17 |
 | Dirt Run4a RHC | `run_4a_numi_rhc_dirt_overlay_pandora_unified_reco2_run4a_rhc_reco2` | 249 | 0.18 |
 | Dirt Run4b RHC | `numi_run4b_rhc_dirt_overlay_pandora_unified_reco2_run4b_reco2` | 1,142 | 0.62 |
 | Overlay Run4c FHC | `numi_run4c_fhc_nu_overlay_pandora_unified_reco2_run4c_reco2` | 2,276 | 2.31 |

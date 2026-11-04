@@ -8,6 +8,9 @@
 #   dims     SAM dimensions of the sample
 # Horn-mode splits by run number (from the PeLEE split macros): Run1 FHC run <= 6748, RHC run >= 6749;
 # Run4c RHC run <= 21410, FHC run > 21410.
+# Run 4b overlay: use the 'pandora_unified' reco2 (v08_00_00_69, PeLEE's parent). The older
+# run4b_numi_rhc_nu_overlay_Pandora_reco2_v08_00_00_63_run4b_reco2 has NO neutrino PFParticle in the
+# final 'pandora' collection (0/58 events tested; pandoraPatRec has 56): slice ID failed there.
 #key	block	blind	tier	dims
 dirt_rhc_run3b	R	0	reco2	defname: prodgenie_numi_uboone_overlay_dirt_rhc_mcc9_run3b_v28_all
 dv_hyp_rhc_CV	R	0	reco2	defname: cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_CV_reco2
@@ -45,7 +48,7 @@ dv_hyp_fhc_WireModThetaYZ	F	0	reco2	defname: cthorpe_make_hyperon_events_run1_de
 genie_hyp_fhc_run1	F	0	reco2	defname: cthorpe_make_hyperon_events_reco2_numi_fhc_run1_pt1_hyperon_reco2_reco2
 genie_hyp_fhc_run1_v51	F	0	reco2	defname: cthorpe_prod_numi_uboone_overlay_fhc_mcc9_run1_v51_GENIE_hyperon_real_GENIE_reco2_reco2
 nuwro_hyp_fhc_run1_v51	F	0	reco2	defname: prod_numi_uboone_overlay_fhc_mcc9_run1_v51_nuwro_hyperon_nuwro_reco2_reco2
-ovl_rhc_run4b	O	0	reco2	defname: run4b_numi_rhc_nu_overlay_Pandora_reco2_v08_00_00_63_run4b_reco2
+ovl_rhc_run4bu	R	0	reco2	defname: numi_run4b_rhc_nu_overlay_pandora_unified_reco2_run4b_reco2
 dirt_rhc_run4a	O	0	reco2	defname: run_4a_numi_rhc_dirt_overlay_pandora_unified_reco2_run4a_rhc_reco2
 dirt_rhc_run4b	O	0	reco2	defname: numi_run4b_rhc_dirt_overlay_pandora_unified_reco2_run4b_reco2
 ovl_fhc_run4c	O	0	reco2	defname: numi_run4c_fhc_nu_overlay_pandora_unified_reco2_run4c_reco2
