@@ -777,6 +777,39 @@ cosmic part uses the same definition, so the selection is consistent within hypa
 HyperonProduction's own enum (1 ν primary, **2 Λ daughter**, 3 other, 5 Σ⁰ daughter, −1
 unmatched), not `simb::Origin`; `HypInput.h` had mapped 2 to "cosmic" (unused, now fixed).
 
+### Hyperon background from the hyperon detvar CV, and dirt (2026-11-06)
+
+The hyperon-enriched detvar CV (`cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_CV_reco2`,
+4,908 reco2 files, 5.99e22 POT = 52× data, old GENIE + old flux) and the RHC run3b dirt (8,294 files,
+1.0377e21 POT, old flux) went through hypana and the island pass:
+
+```bash
+cd pelee
+root -l -b -q 'IslandProcess.C+("lists/bkg_dirt_run3b.list",0,false,"isl_dirt.root",1.0,"fw_dirt_run3b.tsv",0,true)'
+root -l -b -q 'IslandProcess.C+("lists/dv_hyp_rhc_CV.list",0,false,"isl_dvcv_bkg.root",1.0)'
+root -l -b -q 'CvWeights.C+("isl_dvcv_bkg.root","/data/uboone/detvars/hypana/dv_hyp_rhc_CV_fluxweights.tsv","w_dvcv_bkg.tsv")'
+python3 HypTruthDump.py lists/bkg_overlay.list ovl_hyp_truth.tsv   # which overlay events have a hyperon
+python3 DirtCvCheck.py 1.0377e21 5.9943e22 > dirtcv_check.txt
+```
+
+- Flux weights from the art files (`production/nuwro_prod/flux_rw/reco2_flux_weights.C`, MCTruth
+  label `SimInfoMixer`): CV ⟨w⟩ 0.604, dirt 0.666. **Capped at 3**: the ratio map has sparse bins
+  14–19° off axis with w ≈ 12.4; one CV event carried 17% of the operating-point yield. The cap
+  touches 0.12% of events and moves the normalisation 0.6%. `fw_dirt_run3b.tsv` (not committed,
+  9 MB) is columns 1–3 and 7 of `/data/uboone/dirt/hypana/dirt_rhc_run3b_fluxweights.tsv`.
+- The CV hyperon events match the overlay's own at every stage: MuonCandidate 0.994 ± 0.021,
+  Λ mass 1.08 ± 0.07, operating point 1.16 ± 0.46; same composition. So they replace them:
+  **B_MC = 0.818 ± 0.366 (overlay non-hyperon, 5 raw) + 1.514 ± 0.164 (CV, 102 raw) = 2.33 ± 0.40**
+  (overlay alone 2.12 ± 0.62).
+- Dirt: 13.8% of the overlay at MuonCandidate, 0 events after the island cut; factorised from the
+  mass cut **0.073 ± 0.023** (was the 0.18 bound).
+- `Sensitivity.C`: B 2.48 → 2.80 (2.33 MC + 0.37 EXT + 0.02 hyperons + 0.07 dirt). Median limit
+  at f = 15% 35.4/8.70 → 42.7/10.50 (NuWro/GENIE) because the median n goes 2 → 3; Asimov
+  40.3 → 40.9. PeLEE is now better below f ≈ 5–7%.
+- `LastCutsScan.py` uses this background (`ovl` as 3rd argument for the old one): the operating
+  point is the minimum of the mean limit along every cut and survives the parity cross-validation
+  (`lastcuts_scan_cv.txt`, `lastcuts_scan_cv_1d.txt`).
+
 ## Expected sensitivity — `Sensitivity.C`
 
 `pelee/Sensitivity.C` (2026-10-19) gives the expected 90% CL upper limit on μ, the Σ⁰ rate in

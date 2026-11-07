@@ -8,8 +8,7 @@
 //  S/B and the BDT integration all be studied from a small tree without touching
 //  the wire branches again. Analysis of the output: IslandAna.C.
 //
-//  Blind analysis, signal + overlay only. Beam-on, EXT and dirt exist only in
-//  PeLEE format and are not used here.
+//  Blind analysis: signal, overlay, EXT and (since 2026-11-06) dirt; never beam-on.
 //
 //  The chain is the Lambda-style one (SigmaLambdaSel.C) but NOTHING after the
 //  muon is a hard cut here: every event reaching MuonCandidate is written, with
@@ -31,6 +30,8 @@
 //  potScale x flux weight; the table is applied to signal passes only.
 //        root -l -b -q 'IslandProcess.C("lists/sig_nuwro.list",0,true,"isl_sig_nuwro.root",8.6055e-4,
 //                       "/home/t2k/nowak/MicroBooNE/production/nuwro_prod/flux_rw/nuwro_rhc_run3b_reco2_fluxweights.tsv")'
+//  Old-flux background samples (dirt) take the table with bkgFluxWeights=true:
+//        root -l -b -q 'IslandProcess.C("lists/bkg_dirt_run3b.list",0,false,"isl_dirt.root",<scale>,"fw_dirt_run3b.tsv",0,true)'
 // ============================================================================
 #include "HypInput.h"
 #include "SigmaFV.h"
@@ -67,12 +68,15 @@ static const char* STNAME[NST] = { "AllEvents","SliceID","FiducialV","CosmicVeto
 void IslandProcess(const char* list = "lists/sig_genie_qe.list", int maxFiles = 0,
                    bool signalOnly = true, const char* outName = "isl_sig_genie_qe.root",
                    double potScale = 1.0, const char* fluxWeights = "",
-                   int showerMode = 0)   // 0: 0 < nShowers < 4 (standard); 1: ONLY events with no
+                   int showerMode = 0,   // 0: 0 < nShowers < 4 (standard); 1: ONLY events with no
                                          // shower (2026-11-01: the Sigma0 photon is unreconstructed in
                                          // 20% of signal at this stage, and the chain uses the photon only
                                          // for the gap cut). Combine a mode-1 cache with the standard one.
+                   bool bkgFluxWeights = false)  // apply fluxWeights to a background pass too: for a
+                                         // sample whose keys are unique on their own (the old-flux dirt,
+                                         // fw_dirt_run3b.tsv; the hyperon detvar CV)
 {
-  const std::map<unsigned long long,double> FW = signalOnly ? loadFluxWeights(fluxWeights)
+  const std::map<unsigned long long,double> FW = (signalOnly || bkgFluxWeights) ? loadFluxWeights(fluxWeights)
                                                             : std::map<unsigned long long,double>();
   double sumW=0; long nW=0, nWmiss=0;
   TChain ch("ana/OutputTree");
@@ -99,6 +103,7 @@ void IslandProcess(const char* list = "lists/sig_genie_qe.list", int maxFiles = 
   B("trk_end_x",&tex); B("trk_end_y",&tey); B("trk_end_z",&tez);
   int lepPdg=0; double truePhMom=-1;
   B("mc_lepton_pdg",&lepPdg); B("mc_sigmazero_photon_mom",&truePhMom);
+  double trueQ2=-1; B("mc_nu_q2",&trueQ2);   // v3: truth for background-model checks (hyperon samples)
   B("mc_sigmazero_lambda_start_x",&lsx); B("mc_sigmazero_lambda_start_y",&lsy);
   B("mc_sigmazero_lambda_start_z",&lsz); B("mc_sigmazero_lambda_end_x",&lex);
   B("mc_sigmazero_lambda_end_y",&ley);   B("mc_sigmazero_lambda_end_z",&lez);
@@ -141,6 +146,9 @@ void IslandProcess(const char* list = "lists/sig_genie_qe.list", int maxFiles = 
   T.Branch("michelDist",&michelDist,"michelDist/D"); T.Branch("michelE",&michelE,"michelE/D");
   T.Branch("michelN5",&michelN5,"michelN5/I"); T.Branch("muContained",&muContained,"muContained/I");
   T.Branch("lepTrue",&lepTrue,"lepTrue/I");
+  int hypPdg=0, nuPdg=0, ccnc=0; double q2=-1;
+  T.Branch("hypPdg",&hypPdg,"hypPdg/I");    T.Branch("nuPdg",&nuPdg,"nuPdg/I");
+  T.Branch("ccnc",&ccnc,"ccnc/I");          T.Branch("q2",&q2,"q2/D");
 
   long nCut[NST] = {0}; long nIsland = 0;
   const PairCuts pc;
@@ -189,6 +197,7 @@ void IslandProcess(const char* list = "lists/sig_genie_qe.list", int maxFiles = 
 
     // ── everything below is RECORDED, not cut ───────────────────────────────
     mode = H.interaction; run=H.run; sub=H.sub; evt=H.evt;
+    hypPdg = H.h_hyperon_pdg; nuPdg = H.nu_pdg; ccnc = H.ccnc; q2 = trueQ2;
     hasPair=0; precutOK=0; hasPhoton=0;
     mass=-1; decayLen=-1; cosAlpha=-2; vfitChi2=-1; sep=-1; llrP=-9; llrPi=-9;
     pMom=-1; iMom=-1; shrE=-1; pairScore=-1e30;

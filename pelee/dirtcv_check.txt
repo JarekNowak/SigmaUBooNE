@@ -1,0 +1,38 @@
+
+  data 1.1526e+21 POT; dirt 1.0377e+21 (x1.1107); CV 5.9943e+22 (x0.01923)
+  CV at MuonCandidate: 34784 entries, 34782 distinct (run,sub,evt); 97.1% with a hyperon; flux <w> 0.599
+
+  weighted yield per data exposure (raw events in brackets)
+  stage                      overlay, all    overlay, non-hyperon        overlay, hyperon             CV, hyperon   CV, hyperon, distinct                    dirt
+  MuonCandidate        20114.717 (123000)      19725.254 (120629)        389.463 (  2371)        387.125 ( 33791)        387.109 ( 33789)       2770.695 (  3770)
+  Pair                  8377.158 ( 51238)       8199.220 ( 50142)        177.938 (  1096)        181.178 ( 16437)        181.170 ( 16436)        370.437 (   499)
+  LambdaMass            2680.620 ( 16391)       2630.546 ( 16087)         50.074 (   304)         54.066 (  4794)         54.066 (  4794)         92.758 (   121)
+  Alpha+Length           115.815 (   706)        109.231 (   668)          6.584 (    38)          6.665 (   532)          6.665 (   532)          4.611 (     3)
+  PhotonGap               90.142 (   549)         84.703 (   518)          5.439 (    31)          5.619 (   444)          5.619 (   444)          4.611 (     3)
+  Island2                  3.921 (    23)          1.962 (    12)          1.959 (    11)          1.939 (   139)          1.939 (   139)          0.000 (     0)
+  PID                      2.123 (    12)          0.818 (     5)          1.305 (     7)          1.514 (   102)          1.514 (   102)          0.000 (     0)
+
+  CV / overlay-hyperon and dirt / overlay-all, per stage
+  MuonCandidate   CV/ovl-hyp  0.994 +- 0.021    dirt/ovl 0.1377 +- 0.0024
+  Pair            CV/ovl-hyp  1.018 +- 0.032    dirt/ovl 0.0442 +- 0.0021
+  LambdaMass      CV/ovl-hyp  1.080 +- 0.065    dirt/ovl 0.0346 +- 0.0034
+  Alpha+Length    CV/ovl-hyp  1.012 +- 0.172    dirt/ovl 0.0398 +- 0.0299
+  PhotonGap       CV/ovl-hyp  1.033 +- 0.195    dirt/ovl 0.0512 +- 0.0384
+  Island2         CV/ovl-hyp  0.990 +- 0.314    dirt/ovl 0.0000 +-    nan
+  PID             CV/ovl-hyp  1.160 +- 0.459    dirt/ovl 0.0000 +-    nan
+
+  hyperon composition after the Lambda mass cut (fraction of weighted yield, raw)
+   Lambda DIS   overlay  0.310 (  95)   CV  0.326 ( 1636)
+   Sigma+ DIS   overlay  0.238 (  73)   CV  0.212 ( 1053)
+   Lambda QE    overlay  0.175 (  43)   CV  0.144 (  485)
+   Lambda RES   overlay  0.140 (  43)   CV  0.123 (  559)
+   Sigma- QE    overlay  0.051 (  24)   CV  0.073 (  474)
+   Sigma- DIS   overlay  0.023 (   7)   CV  0.047 (  250)
+   Sigma+ RES   overlay  0.033 (  10)   CV  0.042 (  176)
+   Sigma0 RES   overlay  0.013 (   4)   CV  0.020 (   90)
+   Sigma- RES   overlay  0.016 (   5)   CV  0.013 (   70)
+   Sigma0 QE    overlay  0.000 (   0)   CV  0.000 (    1)
+
+  dirt at the operating point: 0.000 +- 0.000 (0 raw); factorised from the mass cut: 92.76 +- 9.06 x 2.123/2680.6 = 0.0734
+  B_MC = overlay non-hyperon 0.818 +- 0.366 (5 raw) + CV hyperon 1.514 +- 0.164 (102 raw) = 2.332 +- 0.401 (17.2%)   [overlay alone 2.123 +- 0.616]
+  PID pass fraction of this B_MC (for the factorised EXT): 2.332 / 3.902 = 0.598

@@ -85,21 +85,34 @@ const double LS_SN     = 0.1183, LS_SN_ERR = 0.0085; // 207 raw, flux-weighted
 //  Sigma0 outside the definition, at the operating point: GENIE 0.0379 (60 raw, incl. PPFX) + 0.003
 //  (true vertex / muon / vetoes, 5 raw); NuWro 0.0073 (11 raw) + 0.0004.
 const double LS_OUT_G  = 0.0409, LS_OUT_N = 0.0077;
-//  12 background events remain, 4 of them GENIE numubar CC QE Lambda (mc_hyperon_pdg 3122) with
-//  the hyperon cross-section weight (1.22-1.29); error sqrt(sum w^2).
-const double LS_BMC    = 2.12,  LS_BMC_ERR = 0.62;  // 12 raw
+//  Overlay alone: 12 background events remain, 7 of them with a hyperon (4 GENIE numubar CC QE
+//  Lambda with the hyperon cross-section weight 1.22-1.29); error sqrt(sum w^2).
+const double LS_BMC_OVL = 2.12, LS_BMC_OVL_ERR = 0.62;  // 12 raw
+//  Since 2026-11-06 the hyperon part comes from the hyperon-enriched detvar CV
+//  (cthorpe_make_hyperon_events_numi_rhc_run3b_detvar_reco2_CV, 5.99e22 POT = 52x data, old GENIE and
+//  old flux: flux weight capped at 3, GENIE hyperon-QE xsec weight). Its hyperon events match the
+//  overlay's own at every stage (MuonCandidate 0.994 +- 0.021, Lambda mass 1.08 +- 0.07, op point
+//  1.16 +- 0.46; DirtCvCheck.py, dirtcv_check.txt). B_MC = overlay non-hyperon 0.818 +- 0.366 (5 raw)
+//  + CV hyperon 1.514 +- 0.164 (102 raw).
+const double LS_BMC    = 2.332, LS_BMC_ERR = 0.401;
 //  EXT is factorised (ExtFactor.C, 0.62 +- 0.27 before the PID cut) with no EXT event left at
-//  these stages; scaled by the MC background's PID pass fraction (2.12 / 3.92 = 0.541). That
-//  assumes cosmic-induced candidates pass the PID cut like neutrino background.
-const double LS_EXT    = 0.62 * 0.541,  LS_EXT_ERR = 0.27 * 0.541;
+//  these stages; scaled by the MC background's PID pass fraction (2.332 / 3.902 = 0.598 with the CV;
+//  overlay alone 2.12 / 3.92 = 0.541). That assumes cosmic-induced candidates pass the PID cut like
+//  neutrino background.
+const double LS_EXT    = 0.62 * 0.598,  LS_EXT_ERR = 0.27 * 0.598;
+const double LS_EXT_OVL = 0.62 * 0.541, LS_EXT_OVL_ERR = 0.27 * 0.541;
 //  NuWro Sigma0 lost to FSI (mostly to Lambda): IslandProcess.C on sig_nuwro.list
 //  with signalOnly=false, flux-weighted, 37 raw before the PID cut (0.0207), 35 after
 //  (pass fraction 0.0301 / 0.0318 from the cache weights). The PeLEE B carries the same
 //  component as "hyperons".
 const double LS_HYP    = 0.0207 * 0.947, LS_HYP_ERR = 0.0034;
-//  Dirt is not in hypana format. PeLEE dirt/overlay is 8.7% at MuonCandidate
-//  and 0.6% after the BDT; the upper end bounds the Lambda-style dirt.
-const double LS_DIRT_MAX = 0.087 * LS_BMC;
+//  Dirt (2026-11-06): RHC run3b dirt hypana (8,294 files, 1.0377e21 POT), flux-weighted
+//  (fw_dirt_run3b.tsv, <w> 0.666, capped at 3), isl_dirt.root, DirtCvCheck.py. Dirt/overlay is 13.8% at
+//  MuonCandidate and 3.5% after the Lambda mass cut; no dirt event survives the island cut (3 raw
+//  reach it). Factorised: dirt after the mass cut 92.8 +- 9.1 (121 raw) x the overlay pass fraction
+//  from there to the end, 2.12 / 2680.6 (+-29%); from the alpha stage instead 0.08 +- 0.06.
+//  Replaces the earlier bound (PeLEE dirt/overlay 8.7% at MuonCandidate x B_MC = 0.18).
+const double LS_DIRT     = 92.8 * 2.12 / 2680.6, LS_DIRT_ERR = LS_DIRT * std::hypot(9.1 / 92.8, 0.29);
 
 // Lognormal nuisance, mean 1, fractional width r: 41 nodes in z = -5..5.
 struct Nuis { std::vector<double> x, w; };
@@ -296,11 +309,12 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
          y.C[7], y.raw[7], yG.C[6], yG.raw[6], y.B, yG.B, yG.S);
 
   const double sGls = LS_SG;
-  const double bLs = LS_BMC + LS_EXT + LS_HYP + LS_OUT_N, bLsG = LS_BMC + LS_EXT + LS_HYP + LS_OUT_G;
-  const double rLs = std::sqrt(LS_BMC_ERR * LS_BMC_ERR + LS_EXT_ERR * LS_EXT_ERR + LS_HYP_ERR * LS_HYP_ERR) / bLs;
+  const double bLs = LS_BMC + LS_EXT + LS_HYP + LS_DIRT + LS_OUT_N, bLsG = LS_BMC + LS_EXT + LS_HYP + LS_DIRT + LS_OUT_G;
+  const double rLs = std::sqrt(LS_BMC_ERR * LS_BMC_ERR + LS_EXT_ERR * LS_EXT_ERR + LS_HYP_ERR * LS_HYP_ERR
+                               + LS_DIRT_ERR * LS_DIRT_ERR) / bLs;
   printf("\n== Lambda-style chain (two planes, gap) ==\n");
-  printf("  S NuWro %.3f  S GENIE %.3f (QE sample; previous hyperon sample %.3f)  B %.2f (%.2f MC + %.2f EXT + %.3f hyperons), MC stat %.1f%%\n",
-         LS_SN, sGls, LS_SG_OLD, bLs, LS_BMC, LS_EXT, LS_HYP, 100 * rLs);
+  printf("  S NuWro %.3f  S GENIE %.3f (QE sample; previous hyperon sample %.3f)  B %.2f (%.2f MC + %.2f EXT + %.3f hyperons + %.3f dirt), MC stat %.1f%%\n",
+         LS_SN, sGls, LS_SG_OLD, bLs, LS_BMC, LS_EXT, LS_HYP, LS_DIRT, 100 * rLs);
 
   // ── 3. expected limits per chain and background systematic
   const double fs[4] = {0.0, 0.07, 0.15, 0.30};
@@ -329,8 +343,12 @@ void Sensitivity(const char* bdtInput = "BDTInput.root", const char* hists = "Si
   };
   lsVar("nominal", bLs, rLs, g, sGls);
   lsVar("without the EXT estimate", LS_BMC + LS_HYP, std::hypot(LS_BMC_ERR, LS_HYP_ERR) / (LS_BMC + LS_HYP), g, sGls);
-  lsVar("with dirt at its bound (8.7% of B_MC)", bLs + LS_DIRT_MAX,
-        std::hypot(rLs * bLs, LS_DIRT_MAX) / (bLs + LS_DIRT_MAX), g, sGls);
+  { const double bO = LS_BMC_OVL + LS_EXT_OVL + LS_HYP + LS_DIRT + LS_OUT_N;
+    lsVar("background MC from the overlay alone (no CV)", bO,
+          std::sqrt(LS_BMC_OVL_ERR * LS_BMC_OVL_ERR + LS_EXT_OVL_ERR * LS_EXT_OVL_ERR + LS_HYP_ERR * LS_HYP_ERR
+                    + LS_DIRT_ERR * LS_DIRT_ERR) / bO, g, sGls); }
+  lsVar("without the dirt estimate", bLs - LS_DIRT,
+        std::sqrt(std::max(0.0, rLs * rLs * bLs * bLs - LS_DIRT_ERR * LS_DIRT_ERR)) / (bLs - LS_DIRT), g, sGls);
   lsVar("no signal normalisation systematic (g = 0)", bLs, rLs, 0.0, sGls);
   lsVar("GENIE from the previous hyperon sample", bLs, rLs, g, LS_SG_OLD);
   lsVar("background known exactly (rMC = 0)", bLs, 0.0, g, sGls);

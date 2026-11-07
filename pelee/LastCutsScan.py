@@ -5,12 +5,15 @@
 #  with the full signal definition (sigdef_*.tsv) and every weight:
 #    GENIE signal: cache weight x hyperon xsec x polarisation (hypw_genie_qe.tsv) x PPFX 0.934
 #    NuWro signal: cache weight x polarisation (pol_nuwro.tsv)
-#    background:   overlay cache weight x GENIE hyperon-QE xsec weight (bkg_hypqe.tsv)
+#    background:   overlay cache weight x GENIE hyperon-QE xsec weight (bkg_hypqe.tsv); since
+#                  2026-11-06 its hyperon events are replaced by the hyperon detvar CV (52x data;
+#                  flux capped at 3 x xsec, w_dvcv_bkg.tsv; DirtCvCheck.py)
 #                  + Sigma0 outside the definition from each model's own sample
-#                  + EXT and NuWro non-signal hyperons scaled with the overlay MC (factorised)
+#                  + EXT, dirt and NuWro non-signal hyperons scaled with the MC (factorised)
 #  Earlier stages fixed at the operating point: pair, |m - m_Lambda| < 20 MeV, cos(alpha) > 0.95,
 #  decay length > 0.5 cm. Limit as Sensitivity.C (Bayesian, lognormal b and e, median n).
-#  The choice is cross-validated by event parity.  Run: python3 LastCutsScan.py [f (0.15)]
+#  The choice is cross-validated by event parity.  Run: python3 LastCutsScan.py [f (0.15)] [1d|-] [ovl]
+#  ("ovl": the overlay-only background model used before 2026-11-06)
 # ============================================================================
 import sys, itertools
 import numpy as np, uproot
@@ -19,10 +22,14 @@ from scipy import stats
 D = "/home/t2k/nowak/MicroBooNE/Sigma/pelee/"
 F = float(sys.argv[1]) if len(sys.argv) > 1 else 0.15
 ONLY1D = len(sys.argv) > 2 and sys.argv[2] == "1d"     # one cut at a time only, with the mean limit
+OVL_ONLY = len(sys.argv) > 3 and sys.argv[3] == "ovl"
 MEAN = ONLY1D
 G, MINRAW = 0.20, 5
-EXT_PER_BMC = 0.62 * 0.541 / 2.12      # factorised EXT at the operating point / overlay MC there
-HYP_PER_BMC = 0.0207 * 0.947 / 2.12
+if OVL_ONLY:
+    BMC_NOM, EXT_PER_BMC, DIRT_PER_BMC = 2.12, 0.62 * 0.541 / 2.12, 0.073 / 2.12
+else:   # factorised EXT / dirt at the operating point, over the MC there (Sensitivity.C)
+    BMC_NOM, EXT_PER_BMC, DIRT_PER_BMC = 2.332, 0.62 * 0.598 / 2.332, 0.073 / 2.332
+HYP_PER_BMC = 0.0207 * 0.947 / BMC_NOM
 
 def key(r, s, e): return (r.astype(np.int64) * 100000 + s) * 10000000 + e
 def table(fn, col=3):
@@ -49,6 +56,18 @@ def load(fn, wtab, extra, defTab=None):
 sg = load("isl_sig_genie_qe.root", "hypw_genie_qe.tsv", 0.934, "sigdef_genie_qe.tsv")
 sn = load("isl_sig_nuwro.root", "pol_nuwro.tsv", 1.0, "sigdef_nuwro.tsv")
 bk = load("isl_bkg.root", "bkg_hypqe.tsv", 1.0)
+if not OVL_ONLY:
+    HYPS = [3122, 3212, 3222, 3112, 3322, 3312, 3334]
+    ht = table("ovl_hyp_truth.tsv")       # col 3 = hyperon pdg
+    keep = ~np.isin(np.abs(np.array([int(ht.get(int(k), 0)) for k in key(bk["run"], bk["sub"], bk["evt"])])), HYPS)
+    bk = {k: v[keep] for k, v in bk.items()}
+    cv = load("isl_dvcv_bkg.root", "w_dvcv_bkg.tsv", 1.0)        # w = weight x flux (uncapped): redone
+    kc = key(cv["run"], cv["sub"], cv["evt"]); wfl, wxs = table("w_dvcv_bkg.tsv", 3), table("w_dvcv_bkg.tsv", 4)
+    hp = uproot.open(D + "isl_dvcv_bkg.root")["isl"]["hypPdg"].array(library="np")
+    cv["w"] = cv["weight"] * 1.1526e21 / 5.9943e22 * np.array([min(wfl[int(x)], 3.0) * wxs[int(x)] for x in kc])
+    cv = {k: v[np.isin(np.abs(hp), HYPS)] for k, v in cv.items()}
+    bk = {k: np.concatenate([bk[k], cv[k]]) for k in bk}
+
 
 GH_X, GH_W = np.polynomial.hermite_e.hermegauss(24); GH_W = GH_W / GH_W.sum()
 def ul_mu(B, rb, S, g=G, n=None):
@@ -85,10 +104,11 @@ def evaluate(c, half=None):
     mb = sel(bk)
     S, OG = sg["w"][ms].sum() * f, sg["w"][mso].sum() * f
     SN, ON = sn["w"][mn].sum() * f, sn["w"][mno].sum() * f
-    bmc, nraw = bk["w"][mb].sum() * f, int(mb.sum())
+    bmc, ebmc = bk["w"][mb].sum() * f, np.sqrt((bk["w"][mb] ** 2).sum()) * f
+    nraw = int(round((bmc / ebmc) ** 2)) if ebmc > 0 else 0   # effective events (CV events weigh 0.02)
     if S <= 0 or nraw < 1: return None
-    B0 = bmc * (1 + EXT_PER_BMC + HYP_PER_BMC)
-    rb = np.hypot(np.hypot(bmc / np.sqrt(nraw), 0.27 * 0.541 * bmc / 2.12) / B0, F)
+    B0 = bmc * (1 + EXT_PER_BMC + HYP_PER_BMC + DIRT_PER_BMC)
+    rb = np.hypot(np.hypot(ebmc, 0.27 / 0.62 * EXT_PER_BMC * bmc) / B0, F)
     BN, BG = B0 + ON, B0 + OG
     r = dict(S=S, SN=SN, OG=OG, ON=ON, bmc=bmc, nraw=nraw, BN=BN, BG=BG,
              muG=ul_mu(BG, rb, S), muN=ul_mu(BN, rb, SN))
@@ -107,7 +127,7 @@ def line(c, r):
             + (f"   mean {r['mG']:5.2f} {r['mN']:6.1f}" if "mG" in r else ""))
 HDR = f"  {'cuts':40s} S_G   S_N    B_MC  raw   B_N   B_G    mu_G   mu_N"
 
-print(f"f = {F:.2f}, g = {G:.2f}; B = overlay MC x (1 + EXT + hyp, factorised) + out-of-definition Sigma0")
+print(f"f = {F:.2f}, g = {G:.2f}; B = {'overlay' if OVL_ONLY else 'overlay non-hyperon + CV hyperon'} MC x (1 + EXT + dirt + hyp, factorised) + out-of-definition Sigma0")
 r = evaluate(NOM); print("nominal:"); print(HDR); print(line(NOM, r))
 
 print("\none cut at a time (others nominal):")

@@ -49,6 +49,11 @@ genie_hyp_fhc_run1	F	0	reco2	defname: cthorpe_make_hyperon_events_reco2_numi_fhc
 genie_hyp_fhc_run1_v51	F	0	reco2	defname: cthorpe_prod_numi_uboone_overlay_fhc_mcc9_run1_v51_GENIE_hyperon_real_GENIE_reco2_reco2
 nuwro_hyp_fhc_run1_v51	F	0	reco2	defname: prod_numi_uboone_overlay_fhc_mcc9_run1_v51_nuwro_hyperon_nuwro_reco2_reco2
 ovl_rhc_run4bu	R	0	reco2	defname: numi_run4b_rhc_nu_overlay_pandora_unified_reco2_run4b_reco2
+# More inclusive RHC background MC for the Lambda-style chain (2026-11-07; the non-hyperon overlay part,
+# 5 raw events at the operating point, is now the largest MC-stat term): run3 inclusive detvar CV
+# (19,828 files, 6.42 TB, 2.48e21 POT), then the v28 run3b overlay (16,444 files, 5.16 TB, 1.94e21 POT).
+dv_incl_rhc_run3_CV	R	0	reco2	defname: numi_run3_standard_nu_overlay_cv_reco2_v08_00_00_54_run3_reco2
+ovl_rhc_run3b_v28	R	0	reco2	defname: prodgenie_numi_uboone_overlay_rhc_mcc9_run3b_v28_all
 dirt_rhc_run4a	O	0	reco2	defname: run_4a_numi_rhc_dirt_overlay_pandora_unified_reco2_run4a_rhc_reco2
 dirt_rhc_run4b	O	0	reco2	defname: numi_run4b_rhc_dirt_overlay_pandora_unified_reco2_run4b_reco2
 ovl_fhc_run4c	O	0	reco2	defname: numi_run4c_fhc_nu_overlay_pandora_unified_reco2_run4c_reco2
